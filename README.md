@@ -30,5 +30,5 @@ Dieser Code ist nur auf Windows lauffähig. Das horayzon*.whl wurde für Windows
 
 ### Linux / Mac OS X
 
-Für diese Plattformen kann direkt das Modul von 
+Für diese Plattformen kann direkt das Modul von
 <https://github.com/ChristianSteger/HORAYZON> genutzt werden.
