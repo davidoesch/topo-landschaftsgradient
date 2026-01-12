@@ -38,11 +38,11 @@ def parse_datetime(date_str, time_str):
     dt_str = f"{date_str} {time_str}"
     # Try different formats
     for fmt in [
-            "%d.%m.%Y %H:%M:%S",
-            "%d.%m.%Y %H:%M",
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%d %H:%M"
-            ]:
+        "%d.%m.%Y %H:%M:%S",
+        "%d.%m.%Y %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+    ]:
         try:
             dt_local = datetime.strptime(dt_str, fmt)
             # Assume input is local time (CET/CEST) - convert to UTC
@@ -61,7 +61,7 @@ def get_shadow_description(shadow_value):
         1: "SELBSTBESCHATTET (self-shaded) - Der Hang zeigt von der Sonne weg",
         2: "GELAENDEBESCHATTET (terrain-shaded) - Schatten umliegende Berge",
         3: "NICHT BERUECKSICHTIGT (not considered) - Ausserhalb der Maske",
-        -1: "NODATA - Keine gueltige Hoehe am Standort"
+        -1: "NODATA - Keine gueltige Hoehe am Standort",
     }
     return descriptions.get(shadow_value, f"Unbekannter Wert: {shadow_value}")
 
@@ -108,22 +108,23 @@ def setup_logging(verbose=False):
     # Configure root logger
     logging.basicConfig(
         level=level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # Suppress verbose output from third-party libraries
-    logging.getLogger('rasterio').setLevel(logging.WARNING)
-    logging.getLogger('pyproj').setLevel(logging.WARNING)
-    logging.getLogger('skyfield').setLevel(logging.WARNING)
-    logging.getLogger('horayzon').setLevel(
+    logging.getLogger("rasterio").setLevel(logging.WARNING)
+    logging.getLogger("pyproj").setLevel(logging.WARNING)
+    logging.getLogger("skyfield").setLevel(logging.WARNING)
+    logging.getLogger("horayzon").setLevel(
         logging.WARNING if not verbose else logging.DEBUG
-        )
+    )
 
 
 # -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
+
 
 def main():
     # -------------------------------------------------------------------------
@@ -143,63 +144,60 @@ Examples:
                                   -t 08:00:00
                                   -e 2683000
                                   -n 1248000
-        """
+        """,
     )
     parser.add_argument(
         "-d",
         "--date",
         type=str,
         default="13.12.2025",
-        help="Date (DD.MM.YYYY), default: 13.12.2025"
-        )
+        help="Date (DD.MM.YYYY), default: 13.12.2025",
+    )
     parser.add_argument(
         "-t",
         "--time",
         type=str,
         default="12:22:00",
-        help="Time UTC (HH:MM:SS), default: 12:22:00"
-        )
+        help="Time UTC (HH:MM:SS), default: 12:22:00",
+    )
     parser.add_argument(
         "-e",
         "--east",
         type=float,
         default=2600000.0,
-        help="Easting in LV95 [m], default: 2600000.0 (Bern)"
-        )
+        help="Easting in LV95 [m], default: 2600000.0 (Bern)",
+    )
     parser.add_argument(
         "-n",
         "--north",
         type=float,
         default=1200000.0,
-        help="Northing in LV95 [m], default: 1200000.0 (Bern)"
-        )
+        help="Northing in LV95 [m], default: 1200000.0 (Bern)",
+    )
     parser.add_argument(
         "-o",
         "--output",
         type=str,
         default="C:/temp/shadow_check/",
-        help="Output directory, default: C:/temp/shadow_check/"
-        )
+        help="Output directory, default: C:/temp/shadow_check/",
+    )
     parser.add_argument(
         "-s",
         "--search-dist",
         type=float,
         default=20.0,
-        help="Search distance for terrain shading [km], default: 20.0"
-        )
+        help="Search distance for terrain shading [km], default: 20.0",
+    )
     parser.add_argument(
         "-i",
         "--input-dom",
         type=str,
         default="C:/temp/DOM/Thinout_highest_object_10m_LV95_LHN95.tif",
-        help="Path to DOM GeoTIFF in LV95"
-        )
+        help="Path to DOM GeoTIFF in LV95",
+    )
     parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Verbose output (DEBUG level)"
-        )
+        "-v", "--verbose", action="store_true", help="Verbose output"
+    )
 
     args = parser.parse_args()
 
@@ -226,7 +224,7 @@ Examples:
         "x_min": e_lv95 - buffer,
         "x_max": e_lv95 + buffer,
         "y_min": n_lv95 - buffer,
-        "y_max": n_lv95 + buffer
+        "y_max": n_lv95 + buffer,
     }
 
     # Paths
@@ -269,49 +267,43 @@ Examples:
     logger.info("Lade DOM-Daten...")
     with rasterio.open(file_dom) as src:
         # Read elevation data
-        elevation_full_raw = src.read(1)
+        elev_full_raw = src.read(1)
         transform = src.transform
         nodata = src.nodata
 
         # Get coordinate arrays
-        nrows, ncols = elevation_full_raw.shape
+        nrows, ncols = elev_full_raw.shape
         x_full = np.array(
             [transform[2] + transform[0] * (i + 0.5) for i in range(ncols)]
-            )
+        )
         y_full = np.array(
             [transform[5] + transform[4] * (i + 0.5) for i in range(nrows)]
-            )
-
-    # Create a mask for nodata values (before replacing them)
-    nodata_mask = np.zeros_like(elevation_full_raw, dtype=bool)
-    if nodata is not None:
-        nodata_mask = (elevation_full_raw == nodata)
-
-    # Also mark NaN/inf values as nodata
-    nodata_mask = nodata_mask | \
-        np.isnan(elevation_full_raw) | \
-        np.isinf(elevation_full_raw)
-
-    # Handle nodata values - replace with 0 (sea level) for terrain processing
-    elevation_full = elevation_full_raw.copy()
-    if nodata is not None:
-        elevation_full = np.where(
-            elevation_full == nodata, 0.0, elevation_full
-            )
-
-    # Replace any remaining NaN/inf values
-    elevation_full = np.nan_to_num(
-        elevation_full, nan=0.0, posinf=0.0, neginf=0.0
         )
 
-    # Extract domain with buffer for outer terrain
-    domain_outer = hray.domain.planar_grid(domain, dist_search)
+    # Create a mask for nodata values (before replacing them)
+    nodata_mask = np.zeros_like(elev_full_raw, dtype=bool)
+    if nodata is not None:
+        nodata_mask = elev_full_raw == nodata
 
-    # Find indices for clipping to domain_outer
-    x_mask = (x_full >= domain_outer["x_min"]) & \
-        (x_full <= domain_outer["x_max"])
-    y_mask = (y_full >= domain_outer["y_min"]) & \
-        (y_full <= domain_outer["y_max"])
+    # Also mark NaN/inf values as nodata
+    nodata_mask = (
+        nodata_mask | np.isnan(elev_full_raw) | np.isinf(elev_full_raw)
+    )
+
+    # Handle nodata values - replace with 0 (sea level) for terrain processing
+    elev_full = elev_full_raw.copy()
+    if nodata is not None:
+        elev_full = np.where(elev_full == nodata, 0.0, elev_full)
+
+    # Replace any remaining NaN/inf values
+    elev_full = np.nan_to_num(elev_full, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # Extract domain with buffer for outer terrain
+    dom_outer = hray.domain.planar_grid(domain, dist_search)
+
+    # Find indices for clipping to dom_outer
+    x_mask = (x_full >= dom_outer["x_min"]) & (x_full <= dom_outer["x_max"])
+    y_mask = (y_full >= dom_outer["y_min"]) & (y_full <= dom_outer["y_max"])
 
     if not np.any(x_mask) or not np.any(y_mask):
         logger.error("Der Standort liegt ausserhalb des DOM!")
@@ -320,7 +312,7 @@ Examples:
     # Convert to float32 as required by horayzon
     x = x_full[x_mask].astype(np.float32)
     y = y_full[y_mask].astype(np.float32)
-    elevation = elevation_full[np.ix_(y_mask, x_mask)].astype(np.float32)
+    elevation = elev_full[np.ix_(y_mask, x_mask)].astype(np.float32)
     nodata_mask_clipped = nodata_mask[np.ix_(y_mask, x_mask)]
 
     # Ensure y is in descending order (north to south)
@@ -330,18 +322,22 @@ Examples:
         nodata_mask_clipped = nodata_mask_clipped[::-1, :]
 
     logger.info(f"DEM Groesse: {elevation.shape}")
-    logger.info(
-        f"Hoehen-Bereich: {elevation.min():.1f} - {elevation.max():.1f} m"
-        )
+    logger.info(f"Z-Bereich: {elevation.min():.1f} - {elevation.max():.1f} m")
 
     # -------------------------------------------------------------------------
     # Compute indices of inner domain
     # -------------------------------------------------------------------------
 
-    slice_in = (slice(np.where(y >= domain["y_max"])[0][-1],
-                      np.where(y <= domain["y_min"])[0][0] + 1),
-                slice(np.where(x <= domain["x_min"])[0][-1],
-                      np.where(x >= domain["x_max"])[0][0] + 1))
+    slice_in = (
+        slice(
+            np.where(y >= domain["y_max"])[0][-1],
+            np.where(y <= domain["y_min"])[0][0] + 1,
+        ),
+        slice(
+            np.where(x <= domain["x_min"])[0][-1],
+            np.where(x >= domain["x_max"])[0][0] + 1,
+        ),
+    )
     offset_0 = slice_in[0].start
     offset_1 = slice_in[1].start
 
@@ -383,7 +379,7 @@ Examples:
             "sun_azimuth_deg": None,
             "incidence_angle_deg": None,
             "shadow_value": -1,
-            "shadow_description": get_shadow_description(-1)
+            "shadow_description": get_shadow_description(-1),
         }
 
     # -------------------------------------------------------------------------
@@ -399,18 +395,19 @@ Examples:
     vec_norm[:, :, 2] = 1.0
 
     # Merge vertex coordinates and pad geometry buffer
-    vert_grid = hray.auxiliary.rearrange_pad_buffer(
-        *np.meshgrid(x, y), elevation
-        )
+    v_grid = hray.auxiliary.rearrange_pad_buffer(*np.meshgrid(x, y), elevation)
 
     # Compute slope
     x_2d, y_2d = np.meshgrid(x, y)
-    slice_in_a1 = (slice(slice_in[0].start - 1, slice_in[0].stop + 1),
-                   slice(slice_in[1].start - 1, slice_in[1].stop + 1))
+    slice_in_a1 = (
+        slice(slice_in[0].start - 1, slice_in[0].stop + 1),
+        slice(slice_in[1].start - 1, slice_in[1].stop + 1),
+    )
     vec_tilt = np.ascontiguousarray(
-        hray.topo_param.slope_plane_meth(x_2d[slice_in_a1],
-                                         y_2d[slice_in_a1],
-                                         elevation[slice_in_a1])[1:-1, 1:-1])
+        hray.topo_param.slope_plane_meth(
+            x_2d[slice_in_a1], y_2d[slice_in_a1], elevation[slice_in_a1]
+        )[1:-1, 1:-1]
+    )
 
     # Compute slope angle and aspect at location
     slope_loc = np.rad2deg(np.arccos(vec_tilt[idx_y, idx_x, 2]))
@@ -432,10 +429,19 @@ Examples:
     logger.info("Initialisiere Terrain...")
     mask = np.ones(vec_tilt.shape[:2], dtype=np.uint8)
     terrain = hray.shadow.Terrain()
-    terrain.initialise(vert_grid, dem_dim_0, dem_dim_1,
-                       offset_0, offset_1, vec_tilt, vec_norm,
-                       surf_enl_fac, mask=mask, elevation=elevation_in,
-                       refrac_cor=False)
+    terrain.initialise(
+        v_grid,
+        dem_dim_0,
+        dem_dim_1,
+        offset_0,
+        offset_1,
+        vec_tilt,
+        vec_norm,
+        surf_enl_fac,
+        mask=mask,
+        elevation=elevation_in,
+        refrac_cor=False,
+    )
 
     # -------------------------------------------------------------------------
     # Calculate sun position
@@ -462,11 +468,11 @@ Examples:
     # Calculate incidence angle (sun zenith on tilted surface)
     incidence_angle = calculate_incidence_angle(
         slope_loc, aspect_loc, sun_elevation, sun_azimuth
-        )
+    )
     logger.info(
         f"Inzidenzwinkel: {incidence_angle:.2f} \
         Grad (Zenitwinkel auf geneigter Flaeche)"
-        )
+    )
 
     # Check if sun is below horizon
     if sun_elevation < 0:
@@ -527,7 +533,7 @@ Examples:
         "sun_azimuth_deg": sun_azimuth,
         "incidence_angle_deg": incidence_angle,
         "shadow_value": shadow_value,
-        "shadow_description": get_shadow_description(shadow_value)
+        "shadow_description": get_shadow_description(shadow_value),
     }
 
 
