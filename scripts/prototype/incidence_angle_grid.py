@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_DOM = r"C:\temp\DOM\Thinout_highest_object_10m_LV95_LHN95.tif"
 GRID_SIZE = 1000  # meters
-GRID_STEP = 10   # meters (100m / 10m = 10 points per axis = 100 total)
+GRID_STEP = 10  # meters (100m / 10m = 10 points per axis = 100 total)
 NUM_POINTS = GRID_SIZE // GRID_STEP  # 10 x 10 = 100 points
 
 
@@ -41,11 +41,10 @@ NUM_POINTS = GRID_SIZE // GRID_STEP  # 10 x 10 = 100 points
 # Helper functions
 # -----------------------------------------------------------------------------
 
+
 def lv95_to_wgs84(e_lv95, n_lv95):
     """Convert LV95 (EPSG:2056) to WGS84 (EPSG:4326) coordinates."""
-    transformer = Transformer.from_crs(
-        "EPSG:2056", "EPSG:4326", always_xy=True
-        )
+    transformer = Transformer.from_crs("EPSG:2056", "EPSG:4326", always_xy=True)
     lon, lat = transformer.transform(e_lv95, n_lv95)
     return lon, lat
 
@@ -168,9 +167,7 @@ def sun_height_over_slope(slope_deg, aspect_deg, sun_elev_deg, sun_az_deg):
     return theta
 
 
-def calculate_incidence_grid(
-        origin_x, origin_y, dt_utc, dem_path, output_dir=None
-        ):
+def calculate_incidence_grid(origin_x, origin_y, dt_utc, dem_path, output_dir=None):
     """
     Calculate incidence angle for a grid.
 
@@ -201,23 +198,17 @@ def calculate_incidence_grid(
 
         # Create coordinate arrays for slope_plane_meth
         x_full = np.array(
-            [
-                dem_transf[2] + dem_transf[0] * (i + 0.5) for i in range(nrows)
-                ]
-            )
+            [dem_transf[2] + dem_transf[0] * (i + 0.5) for i in range(nrows)]
+        )
         y_full = np.array(
-            [
-                dem_transf[5] + dem_transf[4] * (i + 0.5) for i in range(nrows)
-                ]
-            )
+            [dem_transf[5] + dem_transf[4] * (i + 0.5) for i in range(nrows)]
+        )
 
     # Calculate sun position at grid center
     center_x = origin_x + GRID_SIZE / 2
     center_y = origin_y + GRID_SIZE / 2
     lon, lat = lv95_to_wgs84(center_x, center_y)
-    sun_elev, sun_az = get_sun_position(
-        dt_utc, lat, lon, ephemeris_dir=output_dir
-        )
+    sun_elev, sun_az = get_sun_position(dt_utc, lat, lon, ephemeris_dir=output_dir)
 
     logger.info("Sonnenposition (Zentrum des Gitters):")
     logger.info(f"  Elevation: {sun_elev:.2f} Grad")
@@ -227,9 +218,7 @@ def calculate_incidence_grid(
         logger.warning("Sonne unter Horizont (Nacht)")
 
     # Calculate incidence angle for each grid point
-    logger.info(
-        f"Berechne Inzidenzwinkel fuer {NUM_POINTS}x{NUM_POINTS} Punkte..."
-        )
+    logger.info(f"Berechne Inzidenzwinkel fuer {NUM_POINTS}x{NUM_POINTS} Punkte...")
 
     valid_count = 0
     for row in range(NUM_POINTS):
@@ -244,7 +233,7 @@ def calculate_incidence_grid(
             # Get slope and aspect from DEM using horayzon's slope_plane_meth
             slope, aspect = calculate_slope_aspect(
                 dem_data, dem_transf, x, y, x_full, y_full
-                )
+            )
 
             if slope is None or aspect is None:
                 points.append((x, y, np.nan))
@@ -254,10 +243,7 @@ def calculate_incidence_grid(
             dem_col = np.argmin(np.abs(x_full - x))
             dem_row = np.argmin(np.abs(y_full - y))
 
-            if (
-                    0 <= dem_row < dem_data.shape[0] and
-                    0 <= dem_col < dem_data.shape[1]
-            ):
+            if 0 <= dem_row < dem_data.shape[0] and 0 <= dem_col < dem_data.shape[1]:
                 elev = dem_data[dem_row, dem_col]
                 if nodata is not None and elev == nodata:
                     points.append((x, y, np.nan))
@@ -276,9 +262,7 @@ def calculate_incidence_grid(
             logger.debug(f"E={x} / N={y} / Theta {theta:0.2f}")
             valid_count += 1
 
-    logger.info(
-        f"  {valid_count} von {NUM_POINTS * NUM_POINTS} Punkten berechnet"
-        )
+    logger.info(f"  {valid_count} von {NUM_POINTS * NUM_POINTS} Punkten berechnet")
 
     # Create transform for output GeoTIFF
     # Origin is upper-left corner in raster convention
@@ -286,12 +270,12 @@ def calculate_incidence_grid(
     upper_left_y = origin_y + GRID_SIZE
 
     out_transform = from_bounds(
-        upper_left_x,                    # west
-        origin_y,                        # south
-        origin_x + GRID_SIZE,            # east
-        upper_left_y,                    # north
-        NUM_POINTS,                      # width
-        NUM_POINTS                       # height
+        upper_left_x,  # west
+        origin_y,  # south
+        origin_x + GRID_SIZE,  # east
+        upper_left_y,  # north
+        NUM_POINTS,  # width
+        NUM_POINTS,  # height
     )
 
     return grid, out_transform, points
@@ -301,7 +285,7 @@ def write_csv(points, output_path):
     """Write points to CSV with columns X, Y, Winkel."""
     logger.info(f"Schreibe CSV: {output_path}")
 
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write("X,Y,Winkel\n")
         for x, y, angle in points:
             if np.isnan(angle):
@@ -318,15 +302,15 @@ def write_geotiff(grid, transform, output_path):
 
     with rasterio.open(
         output_path,
-        'w',
-        driver='GTiff',
+        "w",
+        driver="GTiff",
         height=grid.shape[0],
         width=grid.shape[1],
         count=1,
         dtype=np.float32,
         crs=CRS.from_epsg(2056),  # LV95
         transform=transform,
-        nodata=np.nan
+        nodata=np.nan,
     ) as dst:
         dst.write(grid, 1)
 
@@ -342,39 +326,62 @@ def setup_logging(verbose=False):
     # Configure root logger
     logging.basicConfig(
         level=level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # Suppress verbose output from third-party libraries
-    logging.getLogger('rasterio').setLevel(logging.WARNING)
-    logging.getLogger('pyproj').setLevel(logging.WARNING)
-    logging.getLogger('skyfield').setLevel(logging.WARNING)
+    logging.getLogger("rasterio").setLevel(logging.WARNING)
+    logging.getLogger("pyproj").setLevel(logging.WARNING)
+    logging.getLogger("skyfield").setLevel(logging.WARNING)
 
 
 # -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
-        description='Berechne Inzidenzwinkel fuer ein Raster'
+        description="Berechne Inzidenzwinkel fuer ein Raster"
     )
-    parser.add_argument('--x', type=float, default=2600000.0,
-                        help="Easting in LV95 [m], default: 2600000.0 (Bern)")
-    parser.add_argument('--y', type=float, default=1200000.0,
-                        help="Northing in LV95 [m], default: 1200000.0 (Bern)")
-    parser.add_argument('--date', type=str, default="13.12.2025",
-                        help='Datum (Format: DD.MM.YYYY)')
-    parser.add_argument('--time', type=str, default="12:22:00",
-                        help='Zeit UTC (Format: HH:MM:SS oder HH:MM)')
-    parser.add_argument('--dem', type=str, default=DEFAULT_DOM,
-                        help=f'Pfad zum DEM (default: {DEFAULT_DOM})')
-    parser.add_argument('--output', type=str, default="C:/temp/",
-                        help='Ausgabe-Pfad fuer GeoTIFF\
-                            (default: incidence_<x>_<y>.tif)')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Verbose output (DEBUG level)')
+    parser.add_argument(
+        "--x",
+        type=float,
+        default=2600000.0,
+        help="Easting in LV95 [m], default: 2600000.0 (Bern)",
+    )
+    parser.add_argument(
+        "--y",
+        type=float,
+        default=1200000.0,
+        help="Northing in LV95 [m], default: 1200000.0 (Bern)",
+    )
+    parser.add_argument(
+        "--date", type=str, default="13.12.2025", help="Datum (Format: DD.MM.YYYY)"
+    )
+    parser.add_argument(
+        "--time",
+        type=str,
+        default="12:22:00",
+        help="Zeit UTC (Format: HH:MM:SS oder HH:MM)",
+    )
+    parser.add_argument(
+        "--dem",
+        type=str,
+        default=DEFAULT_DOM,
+        help=f"Pfad zum DEM (default: {DEFAULT_DOM})",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="C:/temp/",
+        help="Ausgabe-Pfad fuer GeoTIFF\
+                            (default: incidence_<x>_<y>.tif)",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Verbose output (DEBUG level)"
+    )
 
     args = parser.parse_args()
 
@@ -389,7 +396,7 @@ def main():
     logger.info(
         f"Aufloesung: {GRID_STEP}m\
             ({NUM_POINTS}x{NUM_POINTS} = {NUM_POINTS*NUM_POINTS} Punkte)"
-        )
+    )
     logger.info(f"Datum/Zeit (UTC): {args.date} {args.time}")
     logger.info("=" * 70)
 
@@ -408,7 +415,7 @@ def main():
 
     if args.output:
         # Check if output is a directory
-        if os.path.isdir(args.output) or args.output.endswith(('/', '\\')):
+        if os.path.isdir(args.output) or args.output.endswith(("/", "\\")):
             # Ensure directory exists
             os.makedirs(args.output, exist_ok=True)
             output_dir = args.output
@@ -431,7 +438,7 @@ def main():
     # Calculate grid
     grid, transform, points = calculate_incidence_grid(
         args.x, args.y, dt_utc, args.dem, output_dir
-        )
+    )
 
     # Write outputs
     write_geotiff(grid, transform, output_path_tif)
