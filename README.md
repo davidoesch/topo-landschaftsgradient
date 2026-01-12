@@ -22,6 +22,7 @@ Zusätzlich sind folgende Module nötig:
 - rasterio
 - geographiclib
 - skyfield
+- pvlib
 - horayzon-1.2.0-cp313-cp313-win_amd64.whl
 
 ### Windows
