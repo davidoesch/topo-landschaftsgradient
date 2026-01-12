@@ -59,7 +59,7 @@ def parse_datetime(date_str, time_str):
     raise ValueError(f"Could not parse date/time: {dt_str}")
 
 
-def get_sun_position(dt_utc, lat, lon):
+def get_sun_pos(dt_utc, lat, lon):
     """Calculate sun position using pvlib."""
     times = pd.DatetimeIndex([dt_utc])
     pos = solarposition.get_solarposition(times, lat, lon)
@@ -109,7 +109,7 @@ def calculate_slope_aspect(dem_data, transform, nodata):
     return slope, aspect
 
 
-def calculate_incidence_angle(slope, aspect, sun_elevation, sun_azimuth):
+def calc_incidence_angle(slope, aspect, sun_elevation, sun_azimuth):
     """
     Calculate the solar incidence angle for each pixel.
 
@@ -224,7 +224,7 @@ def main():
 
     # Get sun position
     print("\nBerechne Sonnenposition...")
-    sun_elevation, sun_azimuth = get_sun_position(dt_utc, center_lat, center_lon)
+    sun_elevation, sun_azimuth = get_sun_pos(dt_utc, center_lat, center_lon)
     print(f"  Sonnen-Elevation: {sun_elevation:.2f} Grad")
     print(f"  Sonnen-Azimut: {sun_azimuth:.2f} Grad")
 
@@ -248,7 +248,7 @@ def main():
 
     # Calculate incidence angle
     print("\nBerechne Einfallswinkel...")
-    incidence = calculate_incidence_angle(slope, aspect, sun_elevation, sun_azimuth)
+    incidence = calc_incidence_angle(slope, aspect, sun_elevation, sun_azimuth)
 
     # Create mask for valid pixels
     valid_mask = (
