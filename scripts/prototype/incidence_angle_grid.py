@@ -382,7 +382,7 @@ def main():
         help="Ausgabe-Pfad fuer GeoTIFF\
                             (default: incidence_<x>_<y>.tif)",
     )
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose")
 
     args = parser.parse_args()
 
