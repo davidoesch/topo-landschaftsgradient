@@ -44,7 +44,9 @@ NUM_POINTS = GRID_SIZE // GRID_STEP  # 10 x 10 = 100 points
 
 def lv95_to_wgs84(e_lv95, n_lv95):
     """Convert LV95 (EPSG:2056) to WGS84 (EPSG:4326) coordinates."""
-    transformer = Transformer.from_crs("EPSG:2056", "EPSG:4326", always_xy=True)
+    crs2056 = "EPSG:2056"
+    crs4326 = "EPSG:4326"
+    transformer = Transformer.from_crs(crs2056, crs4326, always_xy=True)
     lon, lat = transformer.transform(e_lv95, n_lv95)
     return lon, lat
 
@@ -61,7 +63,7 @@ def parse_datetime(date_str, time_str):
     raise ValueError(f"Could not parse date/time: {dt_str}")
 
 
-def get_sun_position(dt_utc, lat, lon, ephemeris_dir=None):
+def get_sun_pos(dt_utc, lat, lon, ephemeris_dir=None):
     """Calculate sun position using skyfield
     (same as shadow_check_location.py)."""
     if ephemeris_dir:
@@ -167,7 +169,7 @@ def sun_height_over_slope(slope_deg, aspect_deg, sun_elev_deg, sun_az_deg):
     return theta
 
 
-def calculate_incidence_grid(origin_x, origin_y, dt_utc, dem_path, output_dir=None):
+def calc_incidence_grid(origin_x, origin_y, dt_utc, dem_path, output_dir=None):
     """
     Calculate incidence angle for a grid.
 
@@ -208,7 +210,7 @@ def calculate_incidence_grid(origin_x, origin_y, dt_utc, dem_path, output_dir=No
     center_x = origin_x + GRID_SIZE / 2
     center_y = origin_y + GRID_SIZE / 2
     lon, lat = lv95_to_wgs84(center_x, center_y)
-    sun_elev, sun_az = get_sun_position(dt_utc, lat, lon, ephemeris_dir=output_dir)
+    sun_elev, sun_az = get_sun_pos(dt_utc, lat, lon, ephemeris_dir=output_dir)
 
     logger.info("Sonnenposition (Zentrum des Gitters):")
     logger.info(f"  Elevation: {sun_elev:.2f} Grad")
@@ -218,7 +220,7 @@ def calculate_incidence_grid(origin_x, origin_y, dt_utc, dem_path, output_dir=No
         logger.warning("Sonne unter Horizont (Nacht)")
 
     # Calculate incidence angle for each grid point
-    logger.info(f"Berechne Inzidenzwinkel fuer {NUM_POINTS}x{NUM_POINTS} Punkte...")
+    logger.info(f"Berechne Inzidenzwinkel fuer {NUM_POINTS}x{NUM_POINTS} Pkt")
 
     valid_count = 0
     for row in range(NUM_POINTS):
@@ -243,14 +245,15 @@ def calculate_incidence_grid(origin_x, origin_y, dt_utc, dem_path, output_dir=No
             dem_col = np.argmin(np.abs(x_full - x))
             dem_row = np.argmin(np.abs(y_full - y))
 
-            if 0 <= dem_row < dem_data.shape[0] and 0 <= dem_col < dem_data.shape[1]:
-                elev = dem_data[dem_row, dem_col]
-                if nodata is not None and elev == nodata:
-                    points.append((x, y, np.nan))
-                    continue
-                if np.isnan(elev) or elev == 0:
-                    points.append((x, y, np.nan))
-                    continue
+            if 0 <= dem_row < dem_data.shape[0]:
+                if 0 <= dem_col < dem_data.shape[1]:
+                    elev = dem_data[dem_row, dem_col]
+                    if nodata is not None and elev == nodata:
+                        points.append((x, y, np.nan))
+                        continue
+                    if np.isnan(elev) or elev == 0:
+                        points.append((x, y, np.nan))
+                        continue
             else:
                 points.append((x, y, np.nan))
                 continue
@@ -262,7 +265,7 @@ def calculate_incidence_grid(origin_x, origin_y, dt_utc, dem_path, output_dir=No
             logger.debug(f"E={x} / N={y} / Theta {theta:0.2f}")
             valid_count += 1
 
-    logger.info(f"  {valid_count} von {NUM_POINTS * NUM_POINTS} Punkten berechnet")
+    logger.info(f"  {valid_count} von {NUM_POINTS * NUM_POINTS} Pkt berechnet")
 
     # Create transform for output GeoTIFF
     # Origin is upper-left corner in raster convention
@@ -358,7 +361,7 @@ def main():
         help="Northing in LV95 [m], default: 1200000.0 (Bern)",
     )
     parser.add_argument(
-        "--date", type=str, default="13.12.2025", help="Datum (Format: DD.MM.YYYY)"
+        "--date", type=str, default="13.12.2025", help="Format: DD.MM.YYYY"
     )
     parser.add_argument(
         "--time",
@@ -379,9 +382,7 @@ def main():
         help="Ausgabe-Pfad fuer GeoTIFF\
                             (default: incidence_<x>_<y>.tif)",
     )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Verbose output (DEBUG level)"
-    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
 
     args = parser.parse_args()
 
@@ -436,7 +437,7 @@ def main():
         output_path_csv = filename_csv
 
     # Calculate grid
-    grid, transform, points = calculate_incidence_grid(
+    grid, transform, points = calc_incidence_grid(
         args.x, args.y, dt_utc, args.dem, output_dir
     )
 
