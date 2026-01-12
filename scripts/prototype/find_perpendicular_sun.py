@@ -28,6 +28,7 @@ DEFAULT_DOM = r"C:\temp\DOM\Thinout_highest_object_10m_LV95_LHN95.tif"
 # Helper functions
 # -----------------------------------------------------------------------------
 
+
 def lv95_to_wgs84(e_lv95, n_lv95):
     """Convert LV95 (EPSG:2056) to WGS84 (EPSG:4326) coordinates."""
     crs_lv95 = CRS.from_epsg(2056)
@@ -62,8 +63,8 @@ def get_sun_position(dt_utc, lat, lon):
     """Calculate sun position using pvlib."""
     times = pd.DatetimeIndex([dt_utc])
     pos = solarposition.get_solarposition(times, lat, lon)
-    elevation = pos['apparent_elevation'].values[0]
-    azimuth = pos['azimuth'].values[0]
+    elevation = pos["apparent_elevation"].values[0]
+    azimuth = pos["azimuth"].values[0]
     return elevation, azimuth
 
 
@@ -86,7 +87,7 @@ def calculate_slope_aspect(dem_data, transform, nodata):
 
     # Calculate gradients using numpy (faster than loop)
     # Pad array for edge handling
-    dem_padded = np.pad(dem_data, 1, mode='edge')
+    dem_padded = np.pad(dem_data, 1, mode="edge")
 
     # Handle nodata
     if nodata is not None:
@@ -122,11 +123,9 @@ def calculate_incidence_angle(slope, aspect, sun_elevation, sun_azimuth):
     sun_elev_rad = np.radians(sun_elevation)
     sun_az_rad = np.radians(sun_azimuth)
 
-    cos_incidence = (
-        np.cos(slope_rad) * np.sin(sun_elev_rad) +
-        np.sin(slope_rad) * np.cos(sun_elev_rad) *
-        np.cos(sun_az_rad - aspect_rad)
-    )
+    cos_incidence = np.cos(slope_rad) * np.sin(sun_elev_rad) + np.sin(
+        slope_rad
+    ) * np.cos(sun_elev_rad) * np.cos(sun_az_rad - aspect_rad)
 
     # Clamp to valid range
     cos_incidence = np.clip(cos_incidence, -1.0, 1.0)
@@ -140,24 +139,53 @@ def calculate_incidence_angle(slope, aspect, sun_elevation, sun_azimuth):
 # Main
 # -----------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Find locations where sun is perpendicular to terrain"
     )
-    parser.add_argument("-d", "--date", type=str, default="13.12.2025",
-                        help="Date (DD.MM.YYYY), default: 13.12.2025")
-    parser.add_argument("-t", "--time", type=str, default="12:22:00",
-                        help="Time UTC (HH:MM:SS), default: 12:22:00")
-    parser.add_argument("-i", "--input-dom", type=str, default=DEFAULT_DOM,
-                        help=f"Path to DOM GeoTIFF (default: {DEFAULT_DOM})")
-    parser.add_argument("-n", "--num-results", type=int, default=10,
-                        help="Number of best locations to show (default: 10)")
-    parser.add_argument("--max-incidence", type=float, default=5.0,
-                        help="Maximum incidence angle to consider\
-                            (default: 5.0 degrees)")
-    parser.add_argument("--min-slope", type=float, default=30.0,
-                        help="Minimum slope to consider\
-                            (default: 30.0 degrees)")
+    parser.add_argument(
+        "-d",
+        "--date",
+        type=str,
+        default="13.12.2025",
+        help="Date (DD.MM.YYYY), default: 13.12.2025",
+    )
+    parser.add_argument(
+        "-t",
+        "--time",
+        type=str,
+        default="12:22:00",
+        help="Time UTC (HH:MM:SS), default: 12:22:00",
+    )
+    parser.add_argument(
+        "-i",
+        "--input-dom",
+        type=str,
+        default=DEFAULT_DOM,
+        help=f"Path to DOM GeoTIFF (default: {DEFAULT_DOM})",
+    )
+    parser.add_argument(
+        "-n",
+        "--num-results",
+        type=int,
+        default=10,
+        help="Number of best locations to show (default: 10)",
+    )
+    parser.add_argument(
+        "--max-incidence",
+        type=float,
+        default=5.0,
+        help="Maximum incidence angle to consider\
+                            (default: 5.0 degrees)",
+    )
+    parser.add_argument(
+        "--min-slope",
+        type=float,
+        default=30.0,
+        help="Minimum slope to consider\
+                            (default: 30.0 degrees)",
+    )
 
     args = parser.parse_args()
 
@@ -196,9 +224,7 @@ def main():
 
     # Get sun position
     print("\nBerechne Sonnenposition...")
-    sun_elevation, sun_azimuth = get_sun_position(
-        dt_utc, center_lat, center_lon
-        )
+    sun_elevation, sun_azimuth = get_sun_position(dt_utc, center_lat, center_lon)
     print(f"  Sonnen-Elevation: {sun_elevation:.2f} Grad")
     print(f"  Sonnen-Azimut: {sun_azimuth:.2f} Grad")
 
@@ -218,28 +244,28 @@ def main():
     print(
         f"  Hangneigung: {np.nanmin(slope):.1f} -\
               {np.nanmax(slope):.1f} Grad"
-        )
+    )
 
     # Calculate incidence angle
     print("\nBerechne Einfallswinkel...")
-    incidence = calculate_incidence_angle(
-        slope, aspect, sun_elevation, sun_azimuth
-        )
+    incidence = calculate_incidence_angle(slope, aspect, sun_elevation, sun_azimuth)
 
     # Create mask for valid pixels
     valid_mask = (
-        ~np.isnan(slope) &
-        ~np.isnan(aspect) &
-        ~np.isnan(incidence) &
-        (dem_data != nodata if nodata is not None else True) &
-        (dem_data > 0) &  # Exclude water/nodata areas
-        (slope >= args.min_slope) &  # Only consider steep slopes
-        (incidence <= args.max_incidence)  # Only near-perpendicular
+        ~np.isnan(slope)
+        & ~np.isnan(aspect)
+        & ~np.isnan(incidence)
+        & (dem_data != nodata if nodata is not None else True)
+        & (dem_data > 0)  # Exclude water/nodata areas
+        & (slope >= args.min_slope)  # Only consider steep slopes
+        & (incidence <= args.max_incidence)  # Only near-perpendicular
     )
 
     num_candidates = np.sum(valid_mask)
-    print(f"\nGefundene Kandidaten\
-           (Einfallswinkel < {args.max_incidence} Grad): {num_candidates}")
+    print(
+        f"\nGefundene Kandidaten\
+           (Einfallswinkel < {args.max_incidence} Grad): {num_candidates}"
+    )
 
     if num_candidates == 0:
         print("\nKeine Standorte gefunden mit den gegebenen Kriterien.")
@@ -289,15 +315,17 @@ def main():
         print(f"    Exposition: {asp:.1f} Grad")
         print(f"    Pixel: Row={row}, Col={col}")
 
-        results.append({
-            "rank": i + 1,
-            "incidence_deg": inc,
-            "east_lv95": x_lv95,
-            "north_lv95": y_lv95,
-            "elevation_m": elev,
-            "slope_deg": slp,
-            "aspect_deg": asp
-        })
+        results.append(
+            {
+                "rank": i + 1,
+                "incidence_deg": inc,
+                "east_lv95": x_lv95,
+                "north_lv95": y_lv95,
+                "elevation_m": elev,
+                "slope_deg": slp,
+                "aspect_deg": asp,
+            }
+        )
 
     # Print best result for easy copy-paste
     best = results[0]
@@ -308,8 +336,10 @@ def main():
     print(f"  East:  {best['east_lv95']:.2f}")
     print(f"  North: {best['north_lv95']:.2f}")
     print("\nZum Testen mit shadow_check_location.py:")
-    print(f"  python shadow_check_location.py -d {args.date} -t {args.time} "
-          f"-e {best['east_lv95']:.0f} -n {best['north_lv95']:.0f}")
+    print(
+        f"  python shadow_check_location.py -d {args.date} -t {args.time} "
+        f"-e {best['east_lv95']:.0f} -n {best['north_lv95']:.0f}"
+    )
     print("=" * 70)
 
     return results
