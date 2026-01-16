@@ -51,7 +51,6 @@ def calc_sunpos(lat_loc, lon_loc, dt_utc, output_path, planets_file):
     return alt.degrees, az.degrees
 
 
-
 class DOM:
     def __init__(self, dom):
         self.__dom = dom
