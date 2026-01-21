@@ -3,6 +3,7 @@ import os
 import rasterio
 import numpy as np
 import horayzon as hray
+from rasterio.transform import from_bounds
 from pyproj import CRS, Transformer
 from datetime import datetime, timezone
 from skyfield.api import load, wgs84
@@ -37,6 +38,7 @@ def parse_datetime(dateoi, timeoi):
             continue
             raise ValueError(f"Could not parse date/time: {dt_str}")
 
+
 def calc_sunpos(lat_loc, lon_loc, dt_utc, output_path, planets_file):
     logging.info("Berechne Sonnenposition...")
     load.directory = output_path
@@ -49,6 +51,41 @@ def calc_sunpos(lat_loc, lon_loc, dt_utc, output_path, planets_file):
     astrometric = loc_or.at(t).observe(sun)
     alt, az, d = astrometric.apparent().altaz()
     return alt.degrees, az.degrees
+
+
+def calculate_incidence_angle(slope_deg, aspect_deg, sun_elev_deg, sun_az_deg):
+    """
+    Calculate incidence angle (theta) for sun on a tilted surface.
+
+    The incidence angle is the angle between the sun ray and the surface
+    normal.
+    - 0° = sun perpendicular to surface (maximum irradiance)
+    - 90° = sun parallel to surface (no direct irradiance)
+    - >90° = sun behind the surface (self-shading)
+
+    Args:
+        slope_deg: Slope angle in degrees (0 = flat, 90 = vertical)
+        aspect_deg: Aspect angle in degrees
+            (from North, clockwise: 0=N, 90=E,180=S, 270=W)
+        sun_elev_deg: Sun elevation angle in degrees above horizon
+        sun_az_deg: Sun azimuth in degrees (from North, clockwise)
+
+    Returns:
+        theta: Incidence angle in degrees
+    """
+    beta = np.radians(slope_deg)
+    gamma = np.radians(aspect_deg)
+    alpha = np.radians(sun_elev_deg)
+    A = np.radians(sun_az_deg)
+
+    cos_theta = np.sin(alpha) * np.cos(beta)
+    cos_theta += np.cos(alpha) * np.sin(beta) * np.cos(A - gamma)
+
+    # Clamp to valid range
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)
+    theta = np.degrees(np.arccos(cos_theta))
+
+    return theta
 
 
 class DOM:
@@ -170,15 +207,26 @@ class SonnenWinkel:
             if not is_nodata_loc and elev_loc > 0.0:
                 logging.info("Bereite Gelaendedaten vor...")
                 # Create directional unit vectors (up) for inner domain
-                slope_loc, aspect_loc, vec_tilt = self.__calc_slope_angles(elevation, elevation_in, slice_in, idx_y, idx_x, x, y)
+                slope_loc, aspect_loc, vec_tilt = self.__calc_slope_angles(
+                    elevation, elevation_in, slice_in, idx_y, idx_x, x, y
+                )
                 logging.info(f"Hangneigung am Standort: {slope_loc:.1f} Grad")
-                logging.info(f"Exposition am Standort: {aspect_loc:.1f} Grad (von Nord)")
-                sun_elevation, sun_azimuth = calc_sunpos(lat_loc, lon_loc, dt_utc, self.__output_path, self.__planets)
+                logging.info(
+                    f"Exposition am Standort: {aspect_loc:.1f} Grad (von Nord)"
+                )
+                sun_elevation, sun_azimuth = calc_sunpos(
+                    lat_loc, lon_loc, dt_utc, self.__output_path, self.__planets
+                )
                 logging.info(f"Sonnen-Elevation: {sun_elevation:.2f} Grad")
                 logging.info(f"Sonnen-Azimut: {sun_azimuth:.2f} Grad (von Nord)")
                 # Calculate incidence angle (sun zenith on tilted surface)
-                incidence_angle = self.__calculate_incidence_angle(slope_loc, aspect_loc, sun_elevation, sun_azimuth)
-                logging.info(f"Inzidenzwinkel: {incidence_angle:.2f} Grad (Zenitwinkel auf geneigter Flaeche)")
+                incidence_angle = calculate_incidence_angle(
+                    slope_loc, aspect_loc, sun_elevation, sun_azimuth
+                )
+
+                logging.info(
+                    f"Inzidenzwinkel: {incidence_angle:.2f} Grad (Zenitwinkel auf geneigter Flaeche)"
+                )
                 if sun_elevation >= 0:
                     # Get shadow value at location
                     shadow_value = np.zeros(vec_tilt.shape[:2], dtype=np.uint8)[
@@ -217,7 +265,7 @@ class SonnenWinkel:
                 )
                 logging.info("=" * 60)
         else:
-            logging.error("Point ist outside DOM")
+            logging.error("Point is outside DOM")
 
     def __checkinput(self):
         if os.path.isdir(self.__output_path):
@@ -225,7 +273,9 @@ class SonnenWinkel:
         else:
             raise AttributeError(f"Outpath {self.__output_path} not found")
 
-    def __calc_slope_angles(self, elevation, elevation_in, slice_in, idx_y, idx_x, x, y):
+    def __calc_slope_angles(
+        self, elevation, elevation_in, slice_in, idx_y, idx_x, x, y
+    ):
         inner_dim_0, inner_dim_1 = elevation_in.shape
         vec_norm = np.zeros((inner_dim_0, inner_dim_1, 3), dtype=np.float32)
         vec_norm[:, :, 2] = 1.0
@@ -296,41 +346,6 @@ class SonnenWinkel:
         )
 
     @staticmethod
-    def __calculate_incidence_angle(slope_deg, aspect_deg, sun_elev_deg, sun_az_deg):
-        """
-        Calculate incidence angle (theta) for sun on a tilted surface.
-
-        The incidence angle is the angle between the sun ray and the surface
-        normal.
-        - 0° = sun perpendicular to surface (maximum irradiance)
-        - 90° = sun parallel to surface (no direct irradiance)
-        - >90° = sun behind the surface (self-shading)
-
-        Args:
-            slope_deg: Slope angle in degrees (0 = flat, 90 = vertical)
-            aspect_deg: Aspect angle in degrees
-                (from North, clockwise: 0=N, 90=E,180=S, 270=W)
-            sun_elev_deg: Sun elevation angle in degrees above horizon
-            sun_az_deg: Sun azimuth in degrees (from North, clockwise)
-
-        Returns:
-            theta: Incidence angle in degrees
-        """
-        beta = np.radians(slope_deg)
-        gamma = np.radians(aspect_deg)
-        alpha = np.radians(sun_elev_deg)
-        A = np.radians(sun_az_deg)
-
-        cos_theta = np.sin(alpha) * np.cos(beta)
-        cos_theta += np.cos(alpha) * np.sin(beta) * np.cos(A - gamma)
-
-        # Clamp to valid range
-        cos_theta = np.clip(cos_theta, -1.0, 1.0)
-        theta = np.degrees(np.arccos(cos_theta))
-
-        return theta
-
-    @staticmethod
     def __get_shadow_description(shadow_value):
         """Get human-readable description of shadow value."""
         descriptions = {
@@ -351,3 +366,189 @@ class SonnenWinkel:
             "y_min": n_lv95 - buffer,
             "y_max": n_lv95 + buffer,
         }
+
+
+class InzidenWinkel:
+
+    def __init__(self, dom, planets, output_path):
+        self.__dom = DOM(dom)
+        self.__planets = planets
+        self.__output_path = output_path
+        self.__checkinput()
+
+    def calc_incidence_grid(self, e_lv95, dateoi, timeoi, n_lv95, grid_size, grid_step):
+        """
+        Calculate incidence angle for a grid.
+
+        Returns:
+            grid: numpy array with incidence angles (float32)
+            transform: Affine transform for GeoTIFF
+            points: List of tuples (x, y, incidence_angle) for CSV export
+        """
+        # Initialize output grid
+        dt_utc = parse_datetime(dateoi, timeoi)
+        num_points = grid_size // grid_step
+        grid = np.full((num_points, num_points), np.nan, dtype=np.float32)
+        points = []  # List to store (x, y, angle) for CSV
+
+        # Calculate sun position at grid center
+        center_x = e_lv95 + grid_size / 2
+        center_y = n_lv95 + grid_size / 2
+        lon, lat = lv95_to_wgs84(center_x, center_y)
+        sun_elev, sun_az = calc_sunpos(
+            lat, lon, dt_utc, self.__output_path, self.__planets
+        )
+
+        logging.info("Sonnenposition (Zentrum des Gitters):")
+        logging.info(f"  Elevation: {sun_elev:.2f} Grad")
+        logging.info(f"  Azimut: {sun_az:.2f} Grad")
+        logging.info(f"Linke untere Ecke: E={e_lv95:.2f} / N={n_lv95:.2f}")
+        logging.info(
+            f"Aufloesung: {grid_step}m\
+                    ({num_points}x{num_points} = {num_points*num_points} Punkte)"
+        )
+        if sun_elev < 0:
+            logging.warning("Sonne unter Horizont (Nacht)")
+
+        # Calculate incidence angle for each grid point
+        logging.info(f"Berechne Inzidenzwinkel fuer {num_points}x{num_points} Pkt")
+
+        valid_count = 0
+        for row in range(num_points):
+            for col in range(num_points):
+                # Calculate LV95 coordinates
+                # row 0 = top (north), row 9 = bottom (south)
+                # col 0 = left (west), col 9 = right (east)
+                # Flip for raster convention
+                x = e_lv95 + col * grid_step
+                y = n_lv95 + (num_points - 1 - row) * grid_step
+
+                # Get slope and aspect from DEM using horayzon's slope_plane_meth
+                slope, aspect = self.__calculate_slope_aspect(x, y)
+
+                if slope is None or aspect is None:
+                    points.append((x, y, np.nan))
+                    continue
+
+                # Calculate incidence angle
+                theta = calculate_incidence_angle(slope, aspect, sun_elev, sun_az)
+                grid[row, col] = theta
+                points.append((x, y, theta))
+                logging.debug(f"E={x} / N={y} / Theta {theta:0.2f}")
+                valid_count += 1
+
+        logging.info(f"  {valid_count} von {num_points * num_points} Pkt berechnet")
+
+        # Create transform for output GeoTIFF
+        # Origin is upper-left corner in raster convention
+        upper_left_x = e_lv95
+        upper_left_y = n_lv95 + grid_size
+
+        out_transform = from_bounds(
+            upper_left_x,  # west
+            n_lv95,  # south
+            e_lv95 + grid_size,  # east
+            upper_left_y,  # north
+            num_points,  # width
+            num_points,  # height
+        )
+        return grid, out_transform, points
+
+    def __checkinput(self):
+        if os.path.isdir(self.__output_path):
+            logging.debug(f"Outpath {self.__output_path} found")
+        else:
+            raise AttributeError(f"Outpath {self.__output_path} not found")
+
+    def __calculate_slope_aspect(self, x, y):
+        """
+        Calculate slope and aspect at a given location from DEM
+        using horayzon's slope_plane_meth.
+
+        Returns:
+            slope_deg: Slope angle in degrees (0 = flat, 90 = vertical)
+            aspect_deg: Aspect angle in degrees from North,
+            clockwise (0=N, 90=E, 180=S, 270=W)
+            This is the direction the slope faces.
+        """
+        # Get pixel coordinates using argmin (same as shadow_check_location.py)
+        col = np.argmin(np.abs(self.__dom.x_full - x))
+        row = np.argmin(np.abs(self.__dom.y_full - y))
+
+        nrows, ncols = self.__dom.elev_full.shape
+
+        # Need at least 2 pixel border for slope_plane_meth
+        # (it removes 1 pixel border)
+        if col < 2 or col >= ncols - 2 or row < 2 or row >= nrows - 2:
+            return None, None
+
+        # Extract 5x5 window around the point
+        window_size = 5
+        half = window_size// 2
+
+        rows_idx = slice(row - half, row + half + 1)
+        cols_idx = slice(col - half, col + half + 1)
+
+        # Get coordinate arrays for the window
+        x_window = self.__dom.x_full[cols_idx].astype(np.float32)
+        y_window = self.__dom.y_full[rows_idx].astype(np.float32)
+
+        x_2d, y_2d = np.meshgrid(x_window, y_window)
+        elevation_window = self.__dom.elev_full[rows_idx, cols_idx].astype(np.float32)
+
+        # Use horayzon's slope_plane_meth
+        vec_tilt = hray.topo_param.slope_plane_meth(x_2d, y_2d, elevation_window)
+
+        # Get the center pixel
+        # (slope_plane_meth returns array with 1 pixel border removed)
+        # So a 5x5 input gives 3x3 output, center is at [1,1]
+        center_idx = vec_tilt.shape[0] // 2
+        vec_center = vec_tilt[center_idx, center_idx]
+
+        # Calculate slope from tilt vector
+        # (vec_tilt[2] is the z-component of the normal)
+        slope_deg = np.rad2deg(np.arccos(vec_center[2]))
+
+        # Calculate aspect from tilt vector (x and y components)
+        aspect_vec = vec_center[:2]
+        aspect_deg = np.rad2deg(np.arctan2(aspect_vec[0], aspect_vec[1]))
+        if aspect_deg < 0:
+            aspect_deg += 360
+
+        return slope_deg, aspect_deg
+
+    def write_csv(self, points, output_path):
+        """Write points to CSV with columns X, Y, Winkel."""
+        logging.info(f"Schreibe CSV: {output_path}")
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("X,Y,Winkel\n")
+            for x, y, angle in points:
+                if np.isnan(angle):
+                    f.write(f"{x:.2f},{y:.2f},\n")
+                else:
+                    f.write(f"{x:.2f},{y:.2f},{angle:.2f}\n")
+
+        logging.info(f"  {len(points)} Punkte geschrieben")
+
+    def write_geotiff(self, grid, transform, output_path):
+        """Write grid to GeoTIFF with float32 data type."""
+        logging.info(f"Schreibe GeoTIFF: {output_path}")
+
+        with rasterio.open(
+            output_path,
+            "w",
+            driver="GTiff",
+            height=grid.shape[0],
+            width=grid.shape[1],
+            count=1,
+            dtype=np.float32,
+            crs=CRS.from_epsg(2056),  # LV95
+            transform=transform,
+            nodata=np.nan,
+        ) as dst:
+            dst.write(grid, 1)
+
+        logging.info(f"  Groesse: {grid.shape[0]} x {grid.shape[1]} Pixel")
+        logging.info("  Datentyp: float32")
+        logging.info("  CRS: EPSG:2056 (LV95)")

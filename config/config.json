@@ -1,6 +1,7 @@
 {
    "dom_path": "C:\\temp\\DOM\\Thinout_highest_object_10m_LV95_LHN95.tif",
-   "output_path": "C:\\temp\\shadow_check",
+   "output_path_SC": "C:\\temp\\shadow_check",
+   "output_path_IG": "C:\\temp\\incidence_grid",
    "logfolder_path": "C:\\temp",
    "search-dist": 20,
    "planets": "de421.bsp"

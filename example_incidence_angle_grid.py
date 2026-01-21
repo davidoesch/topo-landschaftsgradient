@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import json
+import numpy as np
 from argparse import ArgumentParser
 from datetime import date
 from pathlib import Path
@@ -138,21 +139,28 @@ def run(args, cfg):
         basename = f"incidence_{int(args["east"])}_{int(args["north"])}"
         filename_tif = f"{basename}.tif"
         filename_csv = f"{basename}.csv"
-
         output_dir = cfg["output_path_IG"]
         os.makedirs(output_dir, exist_ok=True)
-
         output_path_tif = os.path.join(output_dir, filename_tif)
         output_path_csv = os.path.join(output_dir, filename_csv)
-
+        # 
         iw.write_geotiff(grid, transform, output_path_tif)
         iw.write_csv(points, output_path_csv)
-
+        # Log statistics
+        valid_values = grid[~np.isnan(grid)]
+        if len(valid_values) > 0:
+            logger.info("Statistik:")
+            logger.info(f"  Min Inzidenzwinkel: {np.min(valid_values):.2f} Grad")
+            logger.info(f"  Max Inzidenzwinkel: {np.max(valid_values):.2f} Grad")
+            logger.info(f"  Mittelwert: {np.mean(valid_values):.2f} Grad")
+        else:
+            logger.warning("Keine gueltigen Werte berechnet!")
     except Exception as e:
         logging.error(e)
         sys.exit(-1)
+    logger.info("=" * 60)
     logger.info("End processing data..")
-
+    logger.info("=" * 60)
 if __name__ == "__main__":
     """Entrypoint for the application"""
     __args = parse_args()
