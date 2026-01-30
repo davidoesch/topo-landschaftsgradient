@@ -1,91 +1,95 @@
+"""Contains 4 classes: DOM, SonnenWinkel (used in main_shadow_check),
+InzidenWinkel (used in main_incidence_angle) and ImgCheck (used in main_image_check)"""
+
 import logging
 import os
 import rasterio
+import csv
 import numpy as np
 import horayzon as hray
-from rasterio.transform import from_bounds
+from rasterio.transform import from_bounds as transform_from_bounds
+from rasterio.windows import from_bounds as window_from_bounds
+
 from pyproj import CRS, Transformer
 from datetime import datetime, timezone
 from skyfield.api import load, wgs84
 
 
-def lv95_to_wgs84(e_lv95, n_lv95):
-    """Convert LV95 (EPSG:2056) to WGS84 (EPSG:4326) coordinates."""
-    crs_lv95 = CRS.from_epsg(2056)
-    crs_wgs84 = CRS.from_epsg(4326)
-    transformer = Transformer.from_crs(crs_lv95, crs_wgs84, always_xy=True)
-    lon, lat = transformer.transform(e_lv95, n_lv95)
-    return lon, lat
+class HelperFunctions:
+    def lv95_to_wgs84(e_lv95, n_lv95):
+        """Convert LV95 (EPSG:2056) to WGS84 (EPSG:4326) coordinates."""
+        crs_lv95 = CRS.from_epsg(2056)
+        crs_wgs84 = CRS.from_epsg(4326)
+        transformer = Transformer.from_crs(crs_lv95, crs_wgs84, always_xy=True)
+        lon, lat = transformer.transform(e_lv95, n_lv95)
+        return lon, lat
 
+    def parse_datetime(dateoi, timeoi):
+        """Parse date and time strings to datetime object (UTC)."""
+        dt_str = f"{dateoi} {timeoi}"
+        # Try different formats
+        for fmt in [
+            "%d.%m.%Y %H:%M:%S",
+            "%d.%m.%Y %H:%M",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+        ]:
+            try:
+                dt_local = datetime.strptime(dt_str, fmt)
+                # Assume input is local time (CET/CEST) - convert to UTC
+                # For simplicity, we assume the user provides UTC time
+                # or we could add timezone handling
+                return dt_local.replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+                raise ValueError(f"Could not parse date/time: {dt_str}")
 
-def parse_datetime(dateoi, timeoi):
-    """Parse date and time strings to datetime object (UTC)."""
-    dt_str = f"{dateoi} {timeoi}"
-    # Try different formats
-    for fmt in [
-        "%d.%m.%Y %H:%M:%S",
-        "%d.%m.%Y %H:%M",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d %H:%M",
-    ]:
-        try:
-            dt_local = datetime.strptime(dt_str, fmt)
-            # Assume input is local time (CET/CEST) - convert to UTC
-            # For simplicity, we assume the user provides UTC time
-            # or we could add timezone handling
-            return dt_local.replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-            raise ValueError(f"Could not parse date/time: {dt_str}")
+    def calc_sunpos(lat_loc, lon_loc, dt_utc, output_path, planets_file):
+        logging.info("Berechne Sonnenposition...")
+        load.directory = output_path
+        planets = load(planets_file)
+        sun = planets["sun"]
+        earth = planets["earth"]
+        loc_or = earth + wgs84.latlon(lat_loc, lon_loc)
+        ts = load.timescale()
+        t = ts.from_datetime(dt_utc)
+        astrometric = loc_or.at(t).observe(sun)
+        alt, az, d = astrometric.apparent().altaz()
+        return alt.degrees, az.degrees
 
+    def calculate_incidence_angle(slope_deg, aspect_deg, sun_elev_deg, sun_az_deg):
+        """
+        Calculate incidence angle (theta) for sun on a tilted surface.
 
-def calc_sunpos(lat_loc, lon_loc, dt_utc, output_path, planets_file):
-    logging.info("Berechne Sonnenposition...")
-    load.directory = output_path
-    planets = load(planets_file)
-    sun = planets["sun"]
-    earth = planets["earth"]
-    loc_or = earth + wgs84.latlon(lat_loc, lon_loc)
-    ts = load.timescale()
-    t = ts.from_datetime(dt_utc)
-    astrometric = loc_or.at(t).observe(sun)
-    alt, az, d = astrometric.apparent().altaz()
-    return alt.degrees, az.degrees
+        The incidence angle is the angle between the sun ray and the surface
+        normal.
+        - 0° = sun perpendicular to surface (maximum irradiance)
+        - 90° = sun parallel to surface (no direct irradiance)
+        - >90° = sun behind the surface (self-shading)
 
+        Args:
+            slope_deg: Slope angle in degrees (0 = flat, 90 = vertical)
+            aspect_deg: Aspect angle in degrees
+                (from North, clockwise: 0=N, 90=E,180=S, 270=W)
+            sun_elev_deg: Sun elevation angle in degrees above horizon
+            sun_az_deg: Sun azimuth in degrees (from North, clockwise)
 
-def calculate_incidence_angle(slope_deg, aspect_deg, sun_elev_deg, sun_az_deg):
-    """
-    Calculate incidence angle (theta) for sun on a tilted surface.
+        Returns:
+            theta: Incidence angle in degrees
+        """
+        beta = np.radians(slope_deg)
+        gamma = np.radians(aspect_deg)
+        alpha = np.radians(sun_elev_deg)
+        A = np.radians(sun_az_deg)
 
-    The incidence angle is the angle between the sun ray and the surface
-    normal.
-    - 0° = sun perpendicular to surface (maximum irradiance)
-    - 90° = sun parallel to surface (no direct irradiance)
-    - >90° = sun behind the surface (self-shading)
+        cos_theta = np.sin(alpha) * np.cos(beta)
+        cos_theta += np.cos(alpha) * np.sin(beta) * np.cos(A - gamma)
 
-    Args:
-        slope_deg: Slope angle in degrees (0 = flat, 90 = vertical)
-        aspect_deg: Aspect angle in degrees
-            (from North, clockwise: 0=N, 90=E,180=S, 270=W)
-        sun_elev_deg: Sun elevation angle in degrees above horizon
-        sun_az_deg: Sun azimuth in degrees (from North, clockwise)
+        # Clamp to valid range
+        cos_theta = np.clip(cos_theta, -1.0, 1.0)
+        theta = np.degrees(np.arccos(cos_theta))
 
-    Returns:
-        theta: Incidence angle in degrees
-    """
-    beta = np.radians(slope_deg)
-    gamma = np.radians(aspect_deg)
-    alpha = np.radians(sun_elev_deg)
-    A = np.radians(sun_az_deg)
-
-    cos_theta = np.sin(alpha) * np.cos(beta)
-    cos_theta += np.cos(alpha) * np.sin(beta) * np.cos(A - gamma)
-
-    # Clamp to valid range
-    cos_theta = np.clip(cos_theta, -1.0, 1.0)
-    theta = np.degrees(np.arccos(cos_theta))
-
-    return theta
+        return theta
 
 
 class DOM:
@@ -126,7 +130,7 @@ class DOM:
             transform = src.transform
             nodata = src.nodata
 
-            # Get coordinate arrays
+            # Get coordinate arrays from rasterio package
             nrows, ncols = elev_full_raw.shape
             x_full = np.array(
                 [transform[2] + transform[0] * (i + 0.5) for i in range(ncols)]
@@ -166,8 +170,8 @@ class SonnenWinkel:
     def getdat_point(self, e_lv95, n_lv95, dateoi, timeoi, search_dist):
         domain = self.__get_domain(e_lv95, n_lv95, search_dist)
         dom_outer = hray.domain.planar_grid(domain, search_dist)
-        dt_utc = parse_datetime(dateoi, timeoi)
-        lon_loc, lat_loc = lv95_to_wgs84(e_lv95, n_lv95)
+        dt_utc = HelperFunctions.parse_datetime(dateoi, timeoi)
+        lon_loc, lat_loc = HelperFunctions.lv95_to_wgs84(e_lv95, n_lv95)
         x_mask = (self.__dom.x_full >= dom_outer["x_min"]) & (
             self.__dom.x_full <= dom_outer["x_max"]
         )
@@ -214,13 +218,13 @@ class SonnenWinkel:
                 logging.info(
                     f"Exposition am Standort: {aspect_loc:.1f} Grad (von Nord)"
                 )
-                sun_elevation, sun_azimuth = calc_sunpos(
+                sun_elevation, sun_azimuth = HelperFunctions.calc_sunpos(
                     lat_loc, lon_loc, dt_utc, self.__output_path, self.__planets
                 )
                 logging.info(f"Sonnen-Elevation: {sun_elevation:.2f} Grad")
                 logging.info(f"Sonnen-Azimut: {sun_azimuth:.2f} Grad (von Nord)")
                 # Calculate incidence angle (sun zenith on tilted surface)
-                incidence_angle = calculate_incidence_angle(
+                incidence_angle = HelperFunctions.calculate_incidence_angle(
                     slope_loc, aspect_loc, sun_elevation, sun_azimuth
                 )
 
@@ -386,7 +390,7 @@ class InzidenWinkel:
             points: List of tuples (x, y, incidence_angle) for CSV export
         """
         # Initialize output grid
-        dt_utc = parse_datetime(dateoi, timeoi)
+        dt_utc = HelperFunctions.parse_datetime(dateoi, timeoi)
         num_points = grid_size // grid_step
         grid = np.full((num_points, num_points), np.nan, dtype=np.float32)
         points = []  # List to store (x, y, angle) for CSV
@@ -394,8 +398,8 @@ class InzidenWinkel:
         # Calculate sun position at grid center
         center_x = e_lv95 + grid_size / 2
         center_y = n_lv95 + grid_size / 2
-        lon, lat = lv95_to_wgs84(center_x, center_y)
-        sun_elev, sun_az = calc_sunpos(
+        lon, lat = HelperFunctions.lv95_to_wgs84(center_x, center_y)
+        sun_elev, sun_az = HelperFunctions.calc_sunpos(
             lat, lon, dt_utc, self.__output_path, self.__planets
         )
 
@@ -431,7 +435,9 @@ class InzidenWinkel:
                     continue
 
                 # Calculate incidence angle
-                theta = calculate_incidence_angle(slope, aspect, sun_elev, sun_az)
+                theta = HelperFunctions.calculate_incidence_angle(
+                    slope, aspect, sun_elev, sun_az
+                )
                 grid[row, col] = theta
                 points.append((x, y, theta))
                 logging.debug(f"E={x} / N={y} / Theta {theta:0.2f}")
@@ -444,7 +450,7 @@ class InzidenWinkel:
         upper_left_x = e_lv95
         upper_left_y = n_lv95 + grid_size
 
-        out_transform = from_bounds(
+        out_transform = transform_from_bounds(
             upper_left_x,  # west
             n_lv95,  # south
             e_lv95 + grid_size,  # east
@@ -484,7 +490,7 @@ class InzidenWinkel:
 
         # Extract 5x5 window around the point
         window_size = 5
-        half = window_size// 2
+        half = window_size // 2
 
         rows_idx = slice(row - half, row + half + 1)
         cols_idx = slice(col - half, col + half + 1)
@@ -522,12 +528,12 @@ class InzidenWinkel:
         logging.info(f"Schreibe CSV: {output_path}")
 
         with open(output_path, "w", encoding="utf-8") as f:
-            f.write("X,Y,Winkel\n")
+            f.write("X;Y;Winkel\n")
             for x, y, angle in points:
                 if np.isnan(angle):
-                    f.write(f"{x:.2f},{y:.2f},\n")
+                    f.write(f"{x:.2f};{y:.2f};\n")
                 else:
-                    f.write(f"{x:.2f},{y:.2f},{angle:.2f}\n")
+                    f.write(f"{x:.2f};{y:.2f};{angle:.2f}\n")
 
         logging.info(f"  {len(points)} Punkte geschrieben")
 
@@ -552,3 +558,118 @@ class InzidenWinkel:
         logging.info(f"  Groesse: {grid.shape[0]} x {grid.shape[1]} Pixel")
         logging.info("  Datentyp: float32")
         logging.info("  CRS: EPSG:2056 (LV95)")
+
+
+class ImgChecker:
+    def __init__(self, test_raster_path, ref_raster_path, output_path):
+        self.__test_raster_path = test_raster_path
+        self.__ref_raster_path = ref_raster_path
+        self.__output_path = output_path
+        self.__checkinput()
+
+        self.raster_test, self.__bounds_test, self.__crs_test = self.__get_extends()
+
+    def compare(self):
+        raster_ref = self.__cut_ref_raster()
+
+        if raster_ref.shape != self.raster_test.shape:
+            raise ValueError("Test raster and Reference raster shapes do not match")
+
+        diff = self.raster_test - raster_ref
+
+        stats = {
+            "mean": float(np.nanmean(diff)),
+            "max": float(np.nanmax(diff)),
+            "min": float(np.nanmin(diff)),
+            "std": float(np.nanstd(diff)),
+        }
+
+        logging.info(f"Stats for file - {self.__ref_raster_path}: {stats}")
+        return diff
+
+    def __checkinput(self):
+        if os.path.isdir(self.__output_path):
+            logging.debug(f"Outpath {self.__output_path} found")
+        else:
+            raise AttributeError(f"Outpath {self.__output_path} not found")
+
+    def __get_extends(self):
+        with rasterio.open(self.__test_raster_path) as src_test:
+            raster_test = src_test.read(1)
+            bounds_test = src_test.bounds
+            crs_test = src_test.crs
+            res_test = src_test.res
+
+        logging.info("Test raster loaded")
+        logging.info(f"Resolution of test raster: {res_test}")
+        logging.info(f"Shape of test raster: {raster_test.shape}")
+        return raster_test, bounds_test, crs_test
+
+    def __cut_ref_raster(self):
+        # Les limites de raster A pour couper et avoir raster B 1km x 1km pixel
+        with rasterio.open(self.__ref_raster_path) as src_ref:
+            crs_ref = src_ref.crs
+            if self.__crs_test != crs_ref:
+                transformer = Transformer.from_crs(
+                    self.__crs_test, crs_ref, always_xy=True
+                )
+                left, bottom = transformer.transform(
+                    self.__bounds_test.left, self.__bounds_test.bottom
+                )
+                right, top = transformer.transform(
+                    self.__bounds_test.right, self.__bounds_test.top
+                )
+            else:
+                left = self.__bounds_test.left
+                bottom = self.__bounds_test.bottom
+                right = self.__bounds_test.right
+                top = self.__bounds_test.top
+
+            window_ref = window_from_bounds(left, bottom, right, top, src_ref.transform)
+            window_ref = window_ref.round_offsets().round_lengths()
+            raster_ref = src_ref.read(1, window=window_ref)
+            res_ref = src_ref.res
+
+        logging.info("Reference raster loaded")
+        logging.info(f"Resolution of reference raster: {res_ref}")
+        logging.info(f"Shape of reference raster: {raster_ref.shape}")
+        logging.info(f"Reference raster nodata value: {src_ref.nodata}")
+        logging.info(
+            f"Number of NaNs in reference raster : {np.isnan(raster_ref).sum()}"
+        )
+        logging.info(f"Number of non-finite values: {np.isfinite(raster_ref).sum()}")
+        return raster_ref
+
+    # .csv file pour que les valeurs de diff soit col1 = [-5°, 5°], col2 = [-10°; -5°] + [5°, 10°], col3 = [-15°, -10°] + [10°, 15°]...
+    def write_csv(self, diff: np.ndarray, filename_csv: str):
+        """
+        Write counts of diff values in intervals to CSV.
+
+        diff_array: numpy array of differences (raster_test - raster_ref)
+        output_path: path to save the CSV
+        """
+        # Définir les intervalles symétriques de 5
+        output_path = os.path.join(self.__output_path, filename_csv)
+        max_range = int(np.nanmax(np.abs(diff))) + 5
+        bins = np.arange(0, max_range + 5, 5)
+
+        counts = []
+        for i in range(1, len(bins)):
+            lower = bins[i - 1]
+            upper = bins[i]
+            # Les intervales comme [-upper, -lower[ U ]lower, upper]
+            mask = ((diff >= lower) & (diff < upper)) | (
+                (diff <= -lower) & (diff > -upper)
+            )
+            counts.append(np.sum(mask))
+
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f, delimiter=";")
+            headers = [
+                f"[{-bins[i]}, {-bins[i-1]}] & [{bins[i-1]}, {bins[i]}]"
+                for i in range(1, len(bins))
+            ]
+            writer.writerow(headers)
+            writer.writerow(counts)
+
+        logging.info(f"CSV écrit : {output_path}, avec {len(counts)} colonnes")
