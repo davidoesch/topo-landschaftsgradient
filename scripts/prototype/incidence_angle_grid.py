@@ -437,9 +437,7 @@ def main():
         output_path_csv = filename_csv
 
     # Calculate grid
-    grid, transform, points = calc_incidence_grid(
-        args.x, args.y, dt_utc, args.dem, output_dir
-    )
+    grid, transform, points = calc_incidence_grid(args.x, args.y, dt_utc, args.dem, output_dir)
 
     # Write outputs
     write_geotiff(grid, transform, output_path_tif)
