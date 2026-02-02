@@ -255,18 +255,15 @@ class SonnenWinkel:
                     logging.info("Der gesamte Ort liegt in der Nacht.")
                     logging.info("=" * 60)
             else:
+                datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
                 logging.info("=" * 60)
                 logging.info("ERGEBNIS")
                 logging.info("=" * 60)
-                logging.info(
-                    f"Datum/Zeit (UTC):    {dt_utc.strftime('%d.%m.%Y %H:%M:%S')}"
-                )
-                logging.info(f"Standort LV95:       E={e_lv95:.2f} / N={n_lv95:.2f}")
-                logging.info(f"Hoehe:               {elev_loc:.1f} m")
+                logging.info(f"Datum/Zeit (UTC):  {datum}")
+                logging.info(f"Standort LV95:     E={e_lv95:.2f} / N={n_lv95:.2f}")
+                logging.info(f"Hoehe:             {elev_loc:.1f} m")
                 logging.info("-" * 60)
-                logging.info(
-                    f"SCHATTEN-STATUS:     {self.__get_shadow_description(-1)}"
-                )
+                logging.info(f"SCHATTEN-STATUS:   {self.__get_shadow_description(-1)}")
                 logging.info("=" * 60)
         else:
             logging.error("Point is outside DOM")
@@ -312,10 +309,11 @@ class SonnenWinkel:
         incidence_angle,
         shadow_value,
     ):
+        datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
         logging.info("=" * 60)
         logging.info("ERGEBNIS")
         logging.info("=" * 60)
-        logging.info(f"Datum/Zeit (UTC):    {dt_utc.strftime('%d.%m.%Y %H:%M:%S')}")
+        logging.info(f"Datum/Zeit (UTC):    {datum}")
         logging.info(f"Standort LV95:       E={e_lv95:.2f} / N={n_lv95:.2f}")
         logging.info(f"Hoehe:               {elev_loc:.1f} m")
         logging.info(f"Hangneigung:         {slope_loc:.1f} Grad")

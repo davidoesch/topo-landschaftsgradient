@@ -90,14 +90,20 @@ def get_config():
 def logparameter(args, cfg):
     lon_loc, lat_loc = HelperFunctions.lv95_to_wgs84(args["east"], args["north"])
     dt_utc = HelperFunctions.parse_datetime(args["date"], args["time"])
+    datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
+    east_lv95 = args["east"]
+    north_lv95 = args["north"]
+    search_read = cfg["search-dist"]
+    dom_read = cfg["dom_path"]
+
     logging.info("=" * 60)
     logging.info("SCHATTEN-CHECK FUER EINZELNEN STANDORT")
     logging.info("=" * 60)
-    logging.info(f"Datum/Zeit (UTC): {dt_utc.strftime('%d.%m.%Y %H:%M:%S')}")
-    logging.info(f"Standort LV95:    E={args["east"]:.2f} / N={args["north"]:.2f}")
+    logging.info(f"Datum/Zeit (UTC): {datum}")
+    logging.info(f"Standort LV95:    E={east_lv95:.2f} / N={north_lv95:.2f}")
     logging.info(f"Standort WGS84:   Lon={lon_loc:.5f} / Lat={lat_loc:.5f}")
-    logging.info(f"Suchradius:       {cfg["search-dist"]} km")
-    logging.info(f"DOM-Datei:        {cfg["dom_path"]}")
+    logging.info(f"Suchradius:       {search_read} km")
+    logging.info(f"DOM-Datei:        {dom_read}")
     logging.info("=" * 60)
 
 

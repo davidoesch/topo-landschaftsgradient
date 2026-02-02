@@ -111,18 +111,24 @@ def get_config():
 def logparameter(args, cfg):
     lon_loc, lat_loc = HelperFunctions.lv95_to_wgs84(args["east"], args["north"])
     dt_utc = HelperFunctions.parse_datetime(args["date"], args["time"])
+    datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
+    east_lv95 = args["east"]
+    north_lv95 = args["north"]
+    grid_size = args["grid_size"]
+    grid_step = args["grid_step"]
+    dom_path = cfg["dom_path"]
+
     logging.info("=" * 60)
     logging.info("INZIDENZWINKEL-RASTER BERECHNUNG")
     logging.info("=" * 60)
-    logging.info(f"Datum/Zeit (UTC): {dt_utc.strftime('%d.%m.%Y %H:%M:%S')}")
-    logging.info(f"Standort LV95:    E={args["east"]:.2f} / N={args["north"]:.2f}")
+    logging.info(f"Datum/Zeit (UTC): {datum}")
+    logging.info(f"Standort LV95:    E={east_lv95:.2f} / N={north_lv95:.2f}")
     logging.info(f"Standort WGS84:   Lon={lon_loc:.5f} / Lat={lat_loc:.5f}")
     logging.info(
-        f"Grid:       Grid size={args["grid_size"]:.2f} m / Grid step={args["grid_step"]:.2f} m"
+        f"Grid:       Grid size={grid_size:.2f} m / Grid step={grid_step:.2f} m"
     )
-    logging.info(f"Rastergroesse: {args["grid_size"]:.2f}m x {args["grid_size"]:.2f}m")
-
-    logging.info(f"DOM-Datei:        {cfg["dom_path"]}")
+    logging.info(f"Rastergroesse: {grid_size:.2f}m x {grid_step:.2f}m")
+    logging.info(f"DOM-Datei:     {dom_path}")
     logging.info("=" * 60)
 
 
@@ -146,9 +152,13 @@ def run(args, cfg):
         )
 
         # Determine output directory (needed for ephemeris data)
+        east_lv95 = int(args['east'])
+        north_lv95 = int(args['north'])
+        datum = dt_utc.strftime('%Y%m%d_%H%M%S')
+        
         basename = (
-            f"incidence_{int(args["east"])}_{int(args["north"])}_"
-            f"{dt_utc.strftime('%Y%m%d_%H%M%S')}"
+            f"incidence_{east_lv95}_{north_lv95}_"
+            f"{datum}"
         )
         filename_tif = f"{basename}.tif"
         filename_csv = f"{basename}.csv"
