@@ -128,7 +128,7 @@ def run(args, cfg):
                 datum = dt_utc.strftime('%Y%m%d_%H%M%S')
 
                 basename = (
-                    f"ImgCheck_{season_name}_{source}_{int(east_lv95)}_{int(north_lv95)}_"
+                    f"ImgCheck_{season_name}_{source}_{east_lv95}_{north_lv95}_"
                     f"{datum}"
                 )
                 IC.write_csv(diff, f"{basename}.csv")
