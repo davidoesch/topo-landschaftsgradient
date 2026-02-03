@@ -161,10 +161,9 @@ class DOM:
 
 class SonnenWinkel:
 
-    def __init__(self, dom, planets, output_path):
+    def __init__(self, dom, planets):
         self.__dom = DOM(dom)
         self.__planets = planets
-        self.__output_path = output_path
         self.__checkinput()
 
     def getdat_point(self, e_lv95, n_lv95, dateoi, timeoi, search_dist):
@@ -269,10 +268,6 @@ class SonnenWinkel:
             logging.error("Point is outside DOM")
 
     def __checkinput(self):
-        if os.path.isdir(self.__output_path):
-            logging.debug(f"Outpath {self.__output_path} found")
-        else:
-            raise AttributeError(f"Outpath {self.__output_path} not found")
         bsp_path = os.path.join(self.__planets["path"], self.__planets["bsp_file"])
         if os.path.isfile(bsp_path):
             logging.debug(f".bsp file {bsp_path} found")
