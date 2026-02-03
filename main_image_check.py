@@ -76,13 +76,10 @@ def setup_logging(
         file_handler.setFormatter(logging.Formatter(fmt))
         loghandlers.append(file_handler)
     logging.basicConfig(level=level, format=fmt, handlers=loghandlers)
-    logger = logging.getLogger(os.path.splitext(os.path.basename(__file__))[0])
     # Suppress verbose output from third-party libraries
     logging.getLogger("rasterio").setLevel(logging.WARNING)
     logging.getLogger("pyproj").setLevel(logging.WARNING)
     logging.getLogger("skyfield").setLevel(logging.WARNING)
-
-    return logger, logfile
 
 
 def get_config():
@@ -94,7 +91,7 @@ def get_config():
 
 
 def run(args, cfg):
-    logger.info("Start processing data..")
+    logging.info("Start processing data..")
     dt_utc = HelperFunctions.parse_datetime(args["date"], args["time"])
 
     try:
@@ -136,9 +133,9 @@ def run(args, cfg):
     except Exception as e:
         logging.error(e)
         sys.exit(-1)
-    logger.info("=" * 60)
-    logger.info("End processing data..")
-    logger.info("=" * 60)
+    logging.info("=" * 60)
+    logging.info("End processing data..")
+    logging.info("=" * 60)
 
 
 if __name__ == "__main__":
@@ -148,11 +145,14 @@ if __name__ == "__main__":
     if os.path.isdir(__cfg["logfolder_path"]):
         try:
             loglvl = getattr(logging, __args["loglevel"].strip().upper())
-            logger, _logfile = setup_logging(
-                level=loglvl, logfolder=Path(__cfg["logfolder_path"])
-            )
+            setup_logging(level=loglvl, logfolder=Path(__cfg["logfolder_path"]))
             run(__args, __cfg)
-        except Exception:
+        except Exception as exc:
+            print(exc)
+            try:
+                logging.fatal(exc)
+            except Exception:
+                pass
             sys.exit(1)
     else:
         print("Not working as logfolder path not found")
