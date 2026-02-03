@@ -112,7 +112,6 @@ def run(args, cfg):
         sw = SonnenWinkel(
             dom=cfg["dom_path"],
             planets=cfg["planets"],
-            output_path=cfg["output_path_SC"],
         )
         sw.getdat_point(
             e_lv95=args["east"],

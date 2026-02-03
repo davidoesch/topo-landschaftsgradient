@@ -44,9 +44,9 @@ class HelperFunctions:
                 continue
                 raise ValueError(f"Could not parse date/time: {dt_str}")
 
-    def calc_sunpos(lat_loc, lon_loc, dt_utc, output_path, planets_file):
+    def calc_sunpos(lat_loc, lon_loc, dt_utc, planets_path, planets_file):
         logging.info("Berechne Sonnenposition...")
-        load.directory = output_path
+        load.directory = planets_path
         planets = load(planets_file)
         sun = planets["sun"]
         earth = planets["earth"]
@@ -161,10 +161,9 @@ class DOM:
 
 class SonnenWinkel:
 
-    def __init__(self, dom, planets, output_path):
+    def __init__(self, dom, planets):
         self.__dom = DOM(dom)
         self.__planets = planets
-        self.__output_path = output_path
         self.__checkinput()
 
     def getdat_point(self, e_lv95, n_lv95, dateoi, timeoi, search_dist):
@@ -219,7 +218,7 @@ class SonnenWinkel:
                     f"Exposition am Standort: {aspect_loc:.1f} Grad (von Nord)"
                 )
                 sun_elevation, sun_azimuth = HelperFunctions.calc_sunpos(
-                    lat_loc, lon_loc, dt_utc, self.__output_path, self.__planets
+                    lat_loc, lon_loc, dt_utc, self.__planets["path"], self.__planets["bsp_file"]
                 )
                 logging.info(f"Sonnen-Elevation: {sun_elevation:.2f} Grad")
                 logging.info(f"Sonnen-Azimut: {sun_azimuth:.2f} Grad (von Nord)")
@@ -269,10 +268,12 @@ class SonnenWinkel:
             logging.error("Point is outside DOM")
 
     def __checkinput(self):
-        if os.path.isdir(self.__output_path):
-            logging.debug(f"Outpath {self.__output_path} found")
+        bsp_path = os.path.join(self.__planets["path"], self.__planets["bsp_file"])
+        if os.path.isfile(bsp_path):
+            logging.debug(f".bsp file {bsp_path} found")
         else:
-            raise AttributeError(f"Outpath {self.__output_path} not found")
+            raise AttributeError(f".bsp file {bsp_path} not found")
+
 
     def __calc_slope_angles(
         self, elevation, elevation_in, slice_in, idx_y, idx_x, x, y
@@ -398,7 +399,7 @@ class InzidenWinkel:
         center_y = n_lv95 + grid_size / 2
         lon, lat = HelperFunctions.lv95_to_wgs84(center_x, center_y)
         sun_elev, sun_az = HelperFunctions.calc_sunpos(
-            lat, lon, dt_utc, self.__output_path, self.__planets
+            lat, lon, dt_utc, self.__planets["path"], self.__planets["bsp_file"]
         )
 
         logging.info("Sonnenposition (Zentrum des Gitters):")
