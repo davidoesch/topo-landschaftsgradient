@@ -1,11 +1,10 @@
 {
-   "dom_path": "C:\\temp\\DOM\\Thinout_highest_object_10m_LV95_LHN95.tif",
-   "output_path_SC": "C:\\temp\\shadow_check",
-   "output_path_IG": "C:\\temp\\incidence_grid",
-   "logfolder_path": "C:\\temp",
+   "dom_path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\DOM\\Thinout_highest_object_10m_LV95_LHN95.tif",
+   "output_path_IG": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\incidence_grid",
+   "logfolder_path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\log",
    "search-dist": 20,
    "planets": {
-      "path": "C:\\temp\\bsp",
+      "path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\planets",
       "bsp_file": "de421.bsp"
    },
    "test_raster_path_jun": "C:\\temp\\incidence_grid\\incidence_2640546_1180763_20250617_102621.tif",
@@ -21,6 +20,5 @@
          "C:\\temp\\incidence_grid\\swisssurface\\r_sun\\shadow_outputs_doy359\\solar_incidence_8bit_doy359_UTC1034_fix_none.tif",
          "C:\\temp\\incidence_grid\\swisssurface\\saga\\2023-12-25t103441\\angle_20231225t1034_SS3DR_SA3DRegio_10m_20kmBuffer_epsg2065_fast.tif"
       ]
-   
 }
 
