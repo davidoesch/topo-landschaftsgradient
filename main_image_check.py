@@ -123,9 +123,13 @@ def run(args, cfg):
                 diff = IC.compare()
 
                 # Determine output directory (csv))
+                east_lv95 = int(args['east'])
+                north_lv95 = int(args['north'])
+                datum = dt_utc.strftime('%Y%m%d_%H%M%S')
+
                 basename = (
-                    f"ImgCheck_{season_name}_{source}_{int(args['east'])}_{int(args['north'])}_"
-                    f"{dt_utc.strftime('%Y%m%d_%H%M%S')}"
+                    f"ImgCheck_{season_name}_{source}_{east_lv95}_{north_lv95}_"
+                    f"{datum}"
                 )
                 IC.write_csv(diff, f"{basename}.csv")
 
