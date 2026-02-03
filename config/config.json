@@ -4,7 +4,10 @@
    "output_path_IG": "C:\\temp\\incidence_grid",
    "logfolder_path": "C:\\temp",
    "search-dist": 20,
-   "planets": "de421.bsp",
+   "planets": {
+      "path": "C:\\temp\\bsp",
+      "bsp_file": "de421.bsp"
+   },
    "test_raster_path_jun": "C:\\temp\\incidence_grid\\incidence_2640546_1180763_20250617_102621.tif",
    "ref_raster_CH_paths_jun": [
       "C:\\temp\\incidence_grid\\swisssurface\\agroscope\\2025-06-17t102621\\incidence_angle_20250617t1026_SS3DR_SA3DRegio_10m_20kmBuffer_epsg2065_fast.tif",
