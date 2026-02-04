@@ -6,11 +6,8 @@ import json
 import sys
 from glob import glob
 from argparse import ArgumentParser
-from datetime import date
-from rasterio.windows import from_bounds
 from pathlib import Path
-import numpy as np
-from landschaftsgradient import ImgChecker2, HelperFunctions
+from landschaftsgradient import ImgChecker2
 
 LOGLEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
