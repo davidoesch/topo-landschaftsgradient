@@ -573,7 +573,9 @@ class ImgChecker2:
     def comparer(self, base_path=None, reffilepattern=None, write_csv=True):
         if not base_path:
             if "refdata" in self.__cfg.keys():
-                base_path = os.path.join(self.__cfg["refdata"]["path"], self.__cfg["refdata"]["dom_source"])
+                base_path = os.path.join(
+                    self.__cfg["refdata"]["path"], self.__cfg["refdata"]["dom_source"]
+                )
             else:
                 raise ValueError("Path to reference files not defined")
         if not reffilepattern:
@@ -581,36 +583,44 @@ class ImgChecker2:
                 reffilepattern = self.__cfg["incident_ref_file_pattern"]
             else:
                 raise ValueError("Path to reference files not defined")
-        subfolders = [ f.path for f in os.scandir(base_path) if f.is_dir() ]
+        subfolders = [f.path for f in os.scandir(base_path) if f.is_dir()]
         for subfolder in subfolders:
             algo = os.path.basename(subfolder)
-            reftif_name = self.__reffilepattern.format(algo=algo, datum=self.__datum, zeit= self.__zeit)
+            reftif_name = self.__reffilepattern.format(
+                algo=algo, datum=self.__datum, zeit=self.__zeit
+            )
             reftif = os.path.join(subfolder, reftif_name)
             if os.path.isfile(reftif):
                 logging.info(f"File {reftif_name} found")
                 self.__rasdiff(reftif)
                 if write_csv:
-                    self.__write_csv(f"{os.path.basename(self.__testraster).rsplit(".", 1)[0]}_{algo}.csv")                
+                    self.__write_csv(
+                        f"{os.path.basename(self.__testraster).rsplit(".", 1)[0]}_{algo}.csv"
+                    )
             else:
                 logging.info(f"File {reftif_name} not found")
-    
-    
+
     def compare(self, reftif, write_csv=True):
         if os.path.isfile(reftif):
             logging.info(f"File {os.path.basename(reftif)} found")
             self.__rasdiff(reftif)
             if write_csv:
-                self.__write_csv(f"{os.path.basename(self.__testraster).rsplit(".", 1)[0]}.csv")                
+                self.__write_csv(
+                    f"{os.path.basename(self.__testraster).rsplit(".", 1)[0]}.csv"
+                )
         else:
             logging.info(f"File {os.path.basename(reftif)} not found")
 
-
     def __rasdiff(self, refraster):
         # Les limites de raster A pour couper et avoir raster B 1km x 1km pixel
-        testraster_data, testraster_bounds, testraster_crs = (self.__read_testraster())
+        testraster_data, testraster_bounds, testraster_crs = self.__read_testraster()
         with rasterio.open(refraster) as refraster_data:
-            left, bottom, right, top = self.__get_bbox(testraster_crs, testraster_bounds, refraster_data)
-            window_ref = window_from_bounds(left, bottom, right, top, refraster_data.transform)
+            left, bottom, right, top = self.__get_bbox(
+                testraster_crs, testraster_bounds, refraster_data
+            )
+            window_ref = window_from_bounds(
+                left, bottom, right, top, refraster_data.transform
+            )
             window_ref = window_ref.round_offsets().round_lengths()
             raster_ref = refraster_data.read(1, window=window_ref)
         if testraster_data.shape != raster_ref.shape:
@@ -623,8 +633,6 @@ class ImgChecker2:
             "std": f"{float(np.nanstd(self.__diff)):.1f}",
         }
         logging.info(f"Stats for file - {os.path.basename(refraster)}: {stats}")
-
-
 
     def __write_csv(self, csv_filename):
         """
@@ -670,8 +678,12 @@ class ImgChecker2:
             )
             return left, bottom, right, top
         else:
-            return testraster_bounds.left, testraster_bounds.bottom, testraster_bounds.right, testraster_bounds.top
-
+            return (
+                testraster_bounds.left,
+                testraster_bounds.bottom,
+                testraster_bounds.right,
+                testraster_bounds.top,
+            )
 
     def __read_testraster(self):
         with rasterio.open(self.__testraster) as src_test:
@@ -679,7 +691,6 @@ class ImgChecker2:
             testraster_bounds = src_test.bounds
             testraster_crs = src_test.crs
         return testraster_data, testraster_bounds, testraster_crs
-
 
 
 class ImgChecker:

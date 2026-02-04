@@ -59,7 +59,7 @@ def run(args, cfg):
     logging.info("=" * 60)
     logging.info("Start processing data..")
     logging.info("=" * 60)
-    
+
     for tif in glob(os.path.join(cfg["output_path_IG"], "*.tif")):
         logging.info(f"Processing {tif}...")
         imgchk2 = ImgChecker2(tif, cfg)
