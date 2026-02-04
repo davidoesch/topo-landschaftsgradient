@@ -7,13 +7,19 @@
       "path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\planets",
       "bsp_file": "de421.bsp"
    },
-   "test_raster_path_jun": "C:\\temp\\incidence_grid\\incidence_2640546_1180763_20250617_102621.tif",
+   "refdata": {
+      "path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\refdata",
+      "dom_source": "swisssurface"
+   },
+   "incident_file_pattern": "incidence_{east_lv95}_{north_lv95}_{datum}_{zeit}",
+   "incident_ref_file_pattern": "incidence_{algo}_{datum}_{zeit}",
+   "date_patter": "%Y%m%d_%H%M%S",
+   "test_raster_path_jun":"C:\\temp\\incidence_grid\\incidence_2640546_1180763_20250617_102621.tif",
    "ref_raster_CH_paths_jun": [
       "C:\\temp\\incidence_grid\\swisssurface\\agroscope\\2025-06-17t102621\\incidence_angle_20250617t1026_SS3DR_SA3DRegio_10m_20kmBuffer_epsg2065_fast.tif",
       "C:\\temp\\incidence_grid\\swisssurface\\r_sun\\shadow_outputs_doy168\\solar_incidence_8bit_doy168_UTC1026_fix_none.tif",
       "C:\\temp\\incidence_grid\\swisssurface\\saga\\2025-06-17t102621\\angle_20250617t1026_SS3DR_SA3DRegio_10m_20kmBuffer_epsg2065_fast.tif"
     ],
-
    "test_raster_path_dec": "C:\\temp\\incidence_grid\\incidence_2640546_1180763_20231225_103441.tif",
    "ref_raster_CH_paths_dec" : [
          "C:\\temp\\incidence_grid\\swisssurface\\agroscope\\2023-12-25t103441\\incidence_angle_20231225t1034_SS3DR_SA3DRegio_10m_20kmBuffer_epsg2065_fast.tif",
