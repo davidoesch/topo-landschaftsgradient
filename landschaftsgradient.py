@@ -559,6 +559,140 @@ class InzidenWinkel:
         logging.info("  CRS: EPSG:2056 (LV95)")
 
 
+class ImgChecker2:
+
+    def __init__(self, test_raster, cfg=None):
+        self.__testraster = test_raster
+        self.__cfg = cfg
+        self.__reffilepattern = cfg["incident_ref_file_pattern"]
+        fnarr = os.path.basename(test_raster).split("_")
+        self.__datum = fnarr[3]
+        self.__zeit = fnarr[4]
+        self.__diff = None
+
+    def comparer(self, base_path=None, reffilepattern=None, write_csv=True):
+        if not base_path:
+            if "refdata" in self.__cfg.keys():
+                base_path = os.path.join(
+                    self.__cfg["refdata"]["path"], self.__cfg["refdata"]["dom_source"]
+                )
+            else:
+                raise ValueError("Path to reference files not defined")
+        if not reffilepattern:
+            if "incident_ref_file_pattern" in self.__cfg.keys():
+                reffilepattern = self.__cfg["incident_ref_file_pattern"]
+            else:
+                raise ValueError("Path to reference files not defined")
+        subfolders = [f.path for f in os.scandir(base_path) if f.is_dir()]
+        for subfolder in subfolders:
+            algo = os.path.basename(subfolder)
+            reftif_name = self.__reffilepattern.format(
+                algo=algo, datum=self.__datum, zeit=self.__zeit
+            )
+            reftif = os.path.join(subfolder, reftif_name)
+            if os.path.isfile(reftif):
+                logging.info(f"File {reftif_name} found")
+                self.__rasdiff(reftif)
+                if write_csv:
+                    self.__write_csv(
+                        f"{os.path.basename(self.__testraster).rsplit(".", 1)[0]}_{algo}.csv"
+                    )
+            else:
+                logging.info(f"File {reftif_name} not found")
+
+    def compare(self, reftif, write_csv=True):
+        if os.path.isfile(reftif):
+            logging.info(f"File {os.path.basename(reftif)} found")
+            self.__rasdiff(reftif)
+            if write_csv:
+                self.__write_csv(
+                    f"{os.path.basename(self.__testraster).rsplit(".", 1)[0]}.csv"
+                )
+        else:
+            logging.info(f"File {os.path.basename(reftif)} not found")
+
+    def __rasdiff(self, refraster):
+        # Les limites de raster A pour couper et avoir raster B 1km x 1km pixel
+        testraster_data, testraster_bounds, testraster_crs = self.__read_testraster()
+        with rasterio.open(refraster) as refraster_data:
+            left, bottom, right, top = self.__get_bbox(
+                testraster_crs, testraster_bounds, refraster_data
+            )
+            window_ref = window_from_bounds(
+                left, bottom, right, top, refraster_data.transform
+            )
+            window_ref = window_ref.round_offsets().round_lengths()
+            raster_ref = refraster_data.read(1, window=window_ref)
+        if testraster_data.shape != raster_ref.shape:
+            raise ValueError("Test raster and Reference raster shapes do not match")
+        self.__diff = testraster_data - raster_ref
+        stats = {
+            "mean": f"{float(np.nanmean(self.__diff)):.1f}",
+            "max": f"{float(np.nanmax(self.__diff)):.1f}",
+            "min": f"{float(np.nanmin(self.__diff)):.1f}",
+            "std": f"{float(np.nanstd(self.__diff)):.1f}",
+        }
+        logging.info(f"Stats for file - {os.path.basename(refraster)}: {stats}")
+
+    def __write_csv(self, csv_filename):
+        """
+        Write counts of diff values in intervals to CSV.
+
+        diff_array: numpy array of differences (raster_test - raster_ref)
+        output_path: path to save the CSV
+        """
+        # Définir les intervalles symétriques de 5
+        output_path = os.path.join(os.path.dirname(self.__testraster), csv_filename)
+        max_range = int(np.nanmax(np.abs(self.__diff))) + 5
+        bins = np.arange(0, max_range + 5, 5)
+        counts = []
+        for i in range(1, len(bins)):
+            lower = bins[i - 1]
+            upper = bins[i]
+            # Les intervales comme [-upper, -lower[ U ]lower, upper]
+            mask = ((self.__diff >= lower) & (self.__diff < upper)) | (
+                (self.__diff <= -lower) & (self.__diff > -upper)
+            )
+            counts.append(np.sum(mask))
+
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f, delimiter=";")
+            headers = [
+                f"[{-bins[i]}, {-bins[i-1]}] & [{bins[i-1]}, {bins[i]}]"
+                for i in range(1, len(bins))
+            ]
+            writer.writerow(headers)
+            writer.writerow(counts)
+
+    def __get_bbox(self, testraster_crs, testraster_bounds, refraster_data):
+        refdata_crs = refraster_data.crs
+        if testraster_crs != refdata_crs:
+            transformer = Transformer.from_crs(
+                testraster_crs, refdata_crs, always_xy=True
+            )
+            left, bottom = transformer.transform(
+                testraster_bounds.left, testraster_bounds.bottom
+            )
+            right, top = transformer.transform(
+                testraster_bounds.right, testraster_bounds.top
+            )
+            return left, bottom, right, top
+        else:
+            return (
+                testraster_bounds.left,
+                testraster_bounds.bottom,
+                testraster_bounds.right,
+                testraster_bounds.top,
+            )
+
+    def __read_testraster(self):
+        with rasterio.open(self.__testraster) as src_test:
+            testraster_data = src_test.read(1)
+            testraster_bounds = src_test.bounds
+            testraster_crs = src_test.crs
+        return testraster_data, testraster_bounds, testraster_crs
+
+
 class ImgChecker:
     def __init__(self, test_raster_path, ref_raster_path, output_path):
         self.__test_raster_path = test_raster_path

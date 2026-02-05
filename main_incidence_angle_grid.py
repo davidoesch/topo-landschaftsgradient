@@ -9,7 +9,7 @@ import numpy as np
 from argparse import ArgumentParser
 from datetime import date
 from pathlib import Path
-from landschaftsgradient import InzidenWinkel, HelperFunctions
+from landschaftsgradient import InzidenWinkel, HelperFunctions, ImgChecker2
 
 LOGLEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -61,6 +61,12 @@ def parse_args():
         default=10,
         type=int,
         help="meters (100m / 10m = 10 points per axis = 100 total)",
+    )
+    parser.add_argument(
+        "--compare",
+        "-cp",
+        action="store_false",
+        help="Compare result, default is True",
     )
     parser.add_argument(
         "--loglevel",
@@ -174,7 +180,10 @@ def run(args, cfg):
             logging.info(f"  Max Inzidenzwinkel: {np.max(valid_values):.2f} Grad")
             logging.info(f"  Mittelwert: {np.mean(valid_values):.2f} Grad")
         else:
-            logger.warning("Keine gueltigen Werte berechnet!")
+            logging.warning("Keine gueltigen Werte berechnet!")
+        if args["compare"]:
+            chk = ImgChecker2(output_path_tif, cfg)
+            chk.comparer()
     except Exception as e:
         logging.error(e)
         sys.exit(-1)
