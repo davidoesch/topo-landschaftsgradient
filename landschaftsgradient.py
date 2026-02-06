@@ -594,9 +594,8 @@ class ImgChecker2:
                 logging.info(f"File {reftif_name} found")
                 self.__rasdiff(reftif)
                 if write_csv:
-                    self.__write_csv(
-                        f"{os.path.basename(self.__testraster).rsplit(".", 1)[0]}_{algo}.csv"
-                    )
+                    prefix = os.path.basename(self.__testraster).rsplit(".", 1)[0]
+                    self.__write_csv(f"{prefix}_{algo}.csv")
             else:
                 logging.info(f"File {reftif_name} not found")
 
@@ -605,9 +604,8 @@ class ImgChecker2:
             logging.info(f"File {os.path.basename(reftif)} found")
             self.__rasdiff(reftif)
             if write_csv:
-                self.__write_csv(
-                    f"{os.path.basename(self.__testraster).rsplit(".", 1)[0]}.csv"
-                )
+                filename = os.path.basename(self.__testraster).rsplit(".", 1)[0]
+                self.__write_csv(f"{filename}.csv")
         else:
             logging.info(f"File {os.path.basename(reftif)} not found")
 

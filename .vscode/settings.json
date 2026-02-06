@@ -1,0 +1,9 @@
+{
+    "python.analysis.extraPaths": [
+        "M:\\Appl\\DATA\\PROD\\swisstopoPROG\\KOGIS\\Landschaftsgradient\\site-packages"
+    ],
+    "python.envFile": "${workspaceFolder}/.env",
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "M:\\Appl\\DATA\\PROD\\swisstopoPROG\\KOGIS\\Landschaftsgradient\\site-packages"
+    }
+}
