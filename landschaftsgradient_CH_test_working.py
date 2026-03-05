@@ -46,7 +46,7 @@ class HelperFunctions:
                 raise ValueError(f"Could not parse date/time: {dt_str}")
 
     def calc_sunpos(lat_loc, lon_loc, dt_utc, planets_path, planets_file):
-        logging.info("Berechne Sonnenposition...")
+        logging.info(f"{os.getpid()} Berechne Sonnenposition...")
         load.directory = planets_path
         planets = load(planets_file)
         sun = planets["sun"]
@@ -120,12 +120,12 @@ class DOM:
         self._x0 = self._transform.c + self._dx / 2
         self._y0 = self._transform.f + self._dy / 2
 
-        logging.info(f"Loaded DOM metadata: {self._width} × {self._height} px")
+        logging.info(f"{os.getpid()} Loaded DOM metadata: {self._width} × {self._height} px")
 
     def close(self):
         if self._src:
             self._src.close()
-            logging.debug("DOM dataset closed.")
+            logging.debug(f"{os.getpid()} DOM dataset closed.")
         
 
 class SonnenWinkel:
@@ -491,7 +491,7 @@ class InzidenWinkel:
         # Initialize slope/aspect arrays
         slope = np.full((num_points, num_points), np.nan, dtype=np.float32)
         aspect = np.full((num_points, num_points), np.nan, dtype=np.float32)
-        logging.info("Computing slope/aspect grid (vectorized)...")
+        logging.info(f"{os.getpid()} Computing slope/aspect grid (vectorized)...")
 
         # Read DOM window once
         src = self.__dom._src
@@ -543,23 +543,23 @@ class InzidenWinkel:
             self.__planets["bsp_file"]
         )
 
-        logging.info("Computing incidence angle")
+        logging.info(f"{os.getpid()} Computing incidence angle")
         # incidence calculation
         theta = HelperFunctions.calculate_incidence_angle(slope, aspect, sun_elev, sun_az)
         grid = theta.astype(np.float32)
-        logging.info(f"Grid {grid}, Center{center_x}/{center_y}")
+        logging.info(f"{os.getpid()} Center{center_x}/{center_y}")
 
         out_transform = rasterio.windows.transform(window, src.transform)
         # Build output transform based on actual read
-        logging.info("Tile finished.")
+        logging.info(f"{os.getpid()} Tile finished.")
 
         return grid, out_transform
 
     def __checkinput(self):
         if os.path.isdir(self.__output_path):
-            logging.debug(f"Outpath {self.__output_path} found")
+            logging.debug(f"{os.getpid()} Outpath {self.__output_path} found")
         else:
-            raise AttributeError(f"Outpath {self.__output_path} not found")
+            raise AttributeError(f"{os.getpid()} Outpath {self.__output_path} not found")
     
     def close(self):
         self.__dom._src.close()

@@ -13,6 +13,7 @@ from rasterio.windows import from_bounds as window_from_bounds
 from rasterio.merge import merge
 from landschaftsgradient_CH_test_working import InzidenWinkel, HelperFunctions, ImgChecker2
 from multiprocessing import Pool
+import multiprocessing as mp
 
 
 LOGLEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -107,6 +108,16 @@ def setup_logging(
     logging.getLogger("skyfield").setLevel(logging.WARNING)
 
 
+def log_listener_process(log_queue: mp.Queue, log_path: Path, loglvl=logging.INFO) -> None:
+    setup_logging(level=loglvl, logfolder=log_path)
+
+    while True:
+        record = log_queue.get()
+        if record is None:  # Sentinel
+            break
+        logging.getLogger(record.name).handle(record)
+
+
 def get_config():
     with open(
         os.path.join(os.path.dirname(__file__), "config", "config.json"), "r"
@@ -126,22 +137,22 @@ def logparameter(args, cfg):
     dom_path = cfg["dom_path"]
 
     logging.info("=" * 60)
-    logging.info("INZIDENZWINKEL-RASTER BERECHNUNG")
-    logging.info("=" * 60)
-    logging.info(f"Datum/Zeit (UTC): {datum}")
-    logging.info(f"Standort LV95:    E={east_lv95:.2f} / N={north_lv95:.2f}")
-    logging.info(f"Standort WGS84:   Lon={lon_loc:.5f} / Lat={lat_loc:.5f}")
+    logging.info(f"{os.getpid()} INZIDENZWINKEL-RASTER BERECHNUNG")
+    logging.info(f"{os.getpid()}" + "=" * 60)
+    logging.info(f"{os.getpid()} Datum/Zeit (UTC): {datum}")
+    logging.info(f"{os.getpid()} Standort LV95:    E={east_lv95:.2f} / N={north_lv95:.2f}")
+    logging.info(f"{os.getpid()} Standort WGS84:   Lon={lon_loc:.5f} / Lat={lat_loc:.5f}")
     logging.info(
-        f"Grid:       Grid size={grid_size:.2f} m / Grid step={grid_step:.2f} m"
+        f"{os.getpid()} Grid:       Grid size={grid_size:.2f} m / Grid step={grid_step:.2f} m"
     )
-    logging.info(f"Rastergroesse: {grid_size:.2f}m x {grid_step:.2f}m")
-    logging.info(f"DOM-Datei:     {dom_path}")
-    logging.info("=" * 60)
+    logging.info(f"{os.getpid()} Rastergroesse: {grid_size:.2f}m x {grid_step:.2f}m")
+    logging.info(f"{os.getpid()} DOM-Datei:     {dom_path}")
+    logging.info(f"{os.getpid()}" + "=" * 60)
 
 
 def run(args, cfg, coord_tuple):
     logger = logging.getLogger()
-    logger.info(f"Start processing data..{os.getpid()}")
+    logger.info(f"Start processing data...{os.getpid()}")
     logparameter(args, cfg)
     dt_utc = HelperFunctions.parse_datetime(args["date"], args["time"])
     try:
@@ -203,26 +214,26 @@ def run(args, cfg, coord_tuple):
         # Log statistics
         valid_values = tile[~np.isnan(tile)]
         if len(valid_values) > 0:
-            logging.info("Statistik:")
-            logging.info(f"  Min Inzidenzwinkel: {np.min(valid_values):.2f} Grad")
-            logging.info(f"  Max Inzidenzwinkel: {np.max(valid_values):.2f} Grad")
-            logging.info(f"  Mittelwert: {np.mean(valid_values):.2f} Grad")
+            logging.info(f"{os.getpid()} Statistik:")
+            logging.info(f"  {os.getpid()} Min Inzidenzwinkel: {np.min(valid_values):.2f} Grad")
+            logging.info(f"  {os.getpid()} Max Inzidenzwinkel: {np.max(valid_values):.2f} Grad")
+            logging.info(f"  {os.getpid()} Mittelwert: {np.mean(valid_values):.2f} Grad")
         else:
-            logging.warning("Keine gueltigen Werte berechnet!")
+            logging.warning(f"{os.getpid()} Keine gueltigen Werte berechnet!")
 
         # if args["compare"]:
         #     chk = ImgChecker2(output_path_tif, cfg)
         #     chk.comparer()
     except Exception:
-        logging.exception("Error inside run()")
+        logging.exception(f"{os.getpid()} Error inside run()")
         raise
 
     # except Exception as e:
     #     logging.error(e)
     #     sys.exit(-1)
-    logging.info("=" * 60)
-    logging.info("End processing data..")
-    logging.info("=" * 60)
+    logging.info(f"{os.getpid()}"+"=" * 60)
+    logging.info(f"{os.getpid()} End processing data..")
+    logging.info(f"{os.getpid()}"+"=" * 60)
 
     iw.close()
 
@@ -316,13 +327,14 @@ def merge_results(tile_results, args, cfg):
             dst.update_tags(i+1, TIMESTAMP_MILLISECONDS=str(ms_value))
 
 
-    logging.info(f"Merged Switzerland-wide TIFF written: {output_tif}")
+    logging.info(f"{os.getpid()} Merged Switzerland-wide TIFF written: {output_tif}")
     
     # close
     for ds in src_files_to_mosaic:
          ds.close()
     for mf in memfiles:
          mf.close()
+
 
 if __name__ == "__main__":
     """Entrypoint for the application"""
@@ -332,11 +344,12 @@ if __name__ == "__main__":
 
             try:
                 loglvl = getattr(logging, __args["loglevel"].strip().upper())
-                setup_logging(level=loglvl, logfolder=Path(__cfg["logfolder_path"]))
+                ctx = mp.get_context("spawn")  # Windows-safe; funktioniert überall
+                log_queue: mp.Queue = ctx.Queue(-1)
+                listener = ctx.Process(target=log_listener_process, args=(log_queue, Path(__cfg["logfolder_path"]), loglvl), name="LogListener")
+                listener.start()
 
-                for name in logging.root.manager.loggerDict:
-                    print(name)
-                sys.exit()
+                setup_logging(level=loglvl, logfolder=Path(__cfg["logfolder_path"]))
 
                 # generate list with all start_e and start_n
                 # single process
@@ -358,7 +371,7 @@ if __name__ == "__main__":
                 logging.info(f"Total tiles: {len(grid_ch)}")
                 logging.info(f"Valid tiles: {len(valid_tiles)}")
                 logging.info(f"Number of nodata tiles: {nodata_tiles}")
-                
+
                 tasks = [(__args, __cfg, coord_tuple) for coord_tuple in valid_tiles]
                 
                 # multiprocess
@@ -376,6 +389,10 @@ if __name__ == "__main__":
                 # as soon as all workers have done their job: join merge
                 # single process
                 merge_results(mosaic_CH, __args, __cfg)
+
+                # Listener beenden
+                log_queue.put_nowait(None)
+                listener.join()
 
             except Exception as exc:
                 print(exc)
