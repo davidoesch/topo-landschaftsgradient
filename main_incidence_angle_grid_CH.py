@@ -191,6 +191,10 @@ def run(args, cfg, coord_tuple):
                 grid_size=args["grid_size"],
                 grid_step=args["grid_step"],
             )
+            # output_path_tif = os.path.join(cfg["output_path_IG"], f"incidence_DOM_CH_DOY_3x3_{coord_tuple[0]}_{coord_tuple[1]}.tif")
+            # if os.path.isfile(output_path_tif):
+            #     os.remove(output_path_tif)
+            # iw.write_geotiff(tile, transform, output_path_tif)
 
             if transform_ref is None:
                 transform_ref = transform
@@ -241,8 +245,8 @@ def run(args, cfg, coord_tuple):
 
 
 def calc_grid(args, cfg) -> list[tuple[float, float]]:
-    n_e = 3     # numbe of cells in east direction: 18
-    n_n = 3      # number of cells in north direction: 12
+    n_e = 18     # numbe of cells in east direction: 18
+    n_n = 12      # number of cells in north direction: 12
     grid_CH = []  # list containing coordinate tuples, e.g. [(2600000, 1200000), (2620000, 1220000)]
     for e in range(n_e):
         for n in range(n_n):
@@ -269,11 +273,12 @@ def tile_contains_valid_data(dom_path, e, n, grid_size):
 
 
 def merge_results(tile_results, args, cfg):
-    logging.info("Merging all tiles into a single Switzerland-wide TIFF...")
+    logging.info(f"{os.getpid()} Merging all tiles into a single Switzerland-wide TIFF...")
     
     src_files_to_mosaic = []
     memfiles = []
 
+    counter = 0
     for stack, transform, crs in tile_results:
         # Create an in-memory rasterio dataset for merging
         memfile = rasterio.io.MemoryFile()
@@ -299,7 +304,7 @@ def merge_results(tile_results, args, cfg):
     doy_str = f"{dt_utc.timetuple().tm_yday:03d}"
     datum = dt_utc.strftime('%Y%m%d_%H%M%S')
 
-    output_tif = os.path.join(cfg["output_path_IG"], f"incidence_DOY_{doy_str}_{datum}_3x3_test1.tif")
+    output_tif = os.path.join(cfg["output_path_IG"], f"incidence_DOM_CH_DOY_{doy_str}_{datum}_CH_3w.tif")
     if os.path.isfile(output_tif):
         os.remove(output_tif)
     with rasterio.open(
@@ -376,9 +381,9 @@ if __name__ == "__main__":
                 
                 # multiprocess
                 n_proc = min(len(tasks), os.cpu_count() - 1)
-                logging.info(f"Starting processing of {len(tasks)} tiles with {2} workers")
+                logging.info(f"Starting processing of {len(tasks)} tiles with {5} workers")
 
-                with Pool(processes=2, initializer=setup_logging, initargs=(logging.INFO,)) as pool:
+                with ctx.Pool(processes=5, initializer=setup_logging, initargs=(logging.INFO,)) as pool:
                     try:
                         mosaic_CH = pool.starmap(run, tasks)
                     except KeyboardInterrupt:
@@ -386,6 +391,7 @@ if __name__ == "__main__":
                         pool.terminate()
                         pool.join()
                         raise
+            
                 # as soon as all workers have done their job: join merge
                 # single process
                 merge_results(mosaic_CH, __args, __cfg)

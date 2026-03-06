@@ -10,7 +10,7 @@ import horayzon as hray
 from rasterio.windows import Window
 from rasterio.transform import from_bounds as transform_from_bounds
 from rasterio.windows import from_bounds as window_from_bounds
-
+from affine import Affine
 from pyproj import CRS, Transformer
 from datetime import datetime, timezone
 from skyfield.api import load, wgs84
@@ -98,6 +98,7 @@ class DOM:
         self.__dom = dom
         self.__checkinput()
         self.__loadingDOM()
+        self.__extended_DOM()
 
     def __checkinput(self):
         if os.path.isfile(self.__dom):
@@ -106,22 +107,80 @@ class DOM:
             raise AttributeError(f"DOM {self.__dom} not found")
 
     def __loadingDOM(self):
-        logging.info("Lade DOM-Daten...")
+        logging.info(f"{os.getpid()} Lade DOM-Daten...")
+
         # keep DOM open 
         self._src = rasterio.open(self.__dom)
         self._src_path = self.__dom
-        self._transform = self._src.transform
+
+        self._transform_vo = self._src.transform
+        self._width_vo = self._src.width
+        self._height_vo = self._src.height
+
         self._nodata = self._src.nodata
-        self._width = self._src.width
-        self._height = self._src.height
+        self._dx = self._transform_vo.a
+        self._dy = self._transform_vo.e
 
-        self._dx = self._transform.a
-        self._dy = self._transform.e
-        self._x0 = self._transform.c + self._dx / 2
-        self._y0 = self._transform.f + self._dy / 2
+        self._x0_vo = self._transform_vo.c + self._dx / 2
+        self._y0_vo = self._transform_vo.f + self._dy / 2
 
-        logging.info(f"{os.getpid()} Loaded DOM metadata: {self._width} × {self._height} px")
+        logging.info(f"{os.getpid()} Loaded DOM_vo metadata: {self._width_vo} × {self._height_vo} px")
+        #logging.info(f"DOM_vo info :\n transform_vo: {self._transform_vo}\nnodata: {self._nodata}\ndx: {self._dx}\ndy: {self._dy}\nx0: {self._x0_vo}\ny0: {self._y0_vo} ")
+        
+        # Extended DOM 
+    # def __extended_DOM(self):
+    #     """ 
+    #     Extended DOM starts from:
+    #             E = 2'460'000 / E = 2'860'000
+    #             N = 1'040'000 / N = 1'320'000
 
+    #     new_dom = nodata_dom_ext + dom_vo
+    #     """
+    #     logging.info(f"{os.getpid()} Building extended DOM")
+
+    #     self._xmin = 2460000
+    #     self._xmax = 2860000
+    #     self._ymin = 1040000
+    #     self._ymax = 1320000
+    #     self._transform = Affine(self._dx, 0, self._xmin,
+    #                              0, self._dy, self._ymax)
+        
+    #     # new size
+    #     self._width = int((self._xmax - self._xmin) / self._dx)
+    #     self._height = int((self._ymax - self._ymin) / abs(self._dy))
+    #     logging.info(f"{os.getpid()} Loaded DOM_vo metadata: {self._width} × {self._height} px")
+
+    #     # fil with nodata
+    #     dom_ext = np.full((self._height, self._width), self._nodata, dtype=np.float32)
+        
+    #     logging.info(f"{os.getpid()} Loaded DOM_ext metadata: {self._width} × {self._height} px")
+    #     #logging.info(f"DOM_ext info :\n transform_ext: {self._transform}\nnodata: {self._nodata}\ndx: {self._dx}\ndy: {self._dy}")
+        
+    #     # read open dom_vo
+    #     dom_vo = self._src.read(1).astype(np.float32)
+
+    #     # offsets of original DOM inside extended grid
+    #     x_offset = int((self._transform_vo.c - self._xmin) / self._dx)
+    #     y_offset = int((self._ymax - self._transform_vo.f) / abs(self._dy))
+
+    #     logging.info(f"{os.getpid()} DOM offset inside extended grid: x_offset={x_offset}/ y_offset={y_offset}")
+
+    #     # insert original DOM
+    #     dom_ext[
+    #         y_offset:y_offset + self._height_vo,
+    #         x_offset:x_offset + self._width_vo
+    #     ] = dom_vo
+
+    #     # final extended DOM
+    #     self._dom_ext = dom_ext
+    #     self._x0 = self._xmin + self._dx / 2
+    #     self._y0 = self._ymax + self._dy / 2
+
+    #     logging.info(f"{os.getpid()} Extended DOM created ")
+    #     logging.info(f"x0: {self._x0}\ny0: {self._y0}")
+
+
+        
     def close(self):
         if self._src:
             self._src.close()
@@ -136,115 +195,115 @@ class SonnenWinkel:
         self.__output_path = output_path
         self.__checkinput()
 
-    def getdat_point(self, e_lv95, n_lv95, dateoi, timeoi, search_dist):
-        domain = self.__get_domain(e_lv95, n_lv95, search_dist)
-        dom_outer = hray.domain.planar_grid(domain, search_dist)
-        dt_utc = HelperFunctions.parse_datetime(dateoi, timeoi)
-        lon_loc, lat_loc = HelperFunctions.lv95_to_wgs84(e_lv95, n_lv95)
-        x_mask = (self.__dom.x_full >= dom_outer["x_min"]) & (
-            self.__dom.x_full <= dom_outer["x_max"]
-        )
-        y_mask = (self.__dom.y_full >= dom_outer["y_min"]) & (
-            self.__dom.y_full <= dom_outer["y_max"]
-        )
-        if np.any(x_mask) and np.any(y_mask):
-            # Convert to float32 as required by horayzon
-            x = self.__dom.x_full[x_mask].astype(np.float32)
-            y = self.__dom.y_full[y_mask].astype(np.float32)
-            elevation = self.__dom.elev_full[np.ix_(y_mask, x_mask)].astype(np.float32)
-            nodata_mask_clipped = self.__dom.nodata_mask[np.ix_(y_mask, x_mask)]
-            # Ensure y is in descending order (north to south)
-            if y[0] < y[-1]:
-                y = y[::-1]
-                elevation = elevation[::-1, :]
-                nodata_mask_clipped = nodata_mask_clipped[::-1, :]
-            logging.info(f"DEM Groesse: {elevation.shape}")
-            logging.info(f"Z-Bereich: {elevation.min():.1f} - {elevation.max():.1f} m")
+    # def getdat_point(self, e_lv95, n_lv95, dateoi, timeoi, search_dist):
+    #     domain = self.__get_domain(e_lv95, n_lv95, search_dist)
+    #     dom_outer = hray.domain.planar_grid(domain, search_dist)
+    #     dt_utc = HelperFunctions.parse_datetime(dateoi, timeoi)
+    #     lon_loc, lat_loc = HelperFunctions.lv95_to_wgs84(e_lv95, n_lv95)
+    #     x_mask = (self.__dom.x_full >= dom_outer["x_min"]) & (
+    #         self.__dom.x_full <= dom_outer["x_max"]
+    #     )
+    #     y_mask = (self.__dom.y_full >= dom_outer["y_min"]) & (
+    #         self.__dom.y_full <= dom_outer["y_max"]
+    #     )
+    #     if np.any(x_mask) and np.any(y_mask):
+    #         # Convert to float32 as required by horayzon
+    #         x = self.__dom.x_full[x_mask].astype(np.float32)
+    #         y = self.__dom.y_full[y_mask].astype(np.float32)
+    #         elevation = self.__dom.elev_full[np.ix_(y_mask, x_mask)].astype(np.float32)
+    #         nodata_mask_clipped = self.__dom.nodata_mask[np.ix_(y_mask, x_mask)]
+    #         # Ensure y is in descending order (north to south)
+    #         if y[0] < y[-1]:
+    #             y = y[::-1]
+    #             elevation = elevation[::-1, :]
+    #             nodata_mask_clipped = nodata_mask_clipped[::-1, :]
+    #         logging.info(f"DEM Groesse: {elevation.shape}")
+    #         logging.info(f"Z-Bereich: {elevation.min():.1f} - {elevation.max():.1f} m")
 
-            slice_in = self.__get_slice(x, y, domain)
+    #         slice_in = self.__get_slice(x, y, domain)
 
-            logging.info(f"Innere Domaene: {elevation[slice_in].shape}")
-            elevation_in = np.ascontiguousarray(elevation[slice_in])
+    #         logging.info(f"Innere Domaene: {elevation[slice_in].shape}")
+    #         elevation_in = np.ascontiguousarray(elevation[slice_in])
 
-            # Find index of location in grid
-            idx_x = np.argmin(np.abs(x[slice_in[1]] - e_lv95))
-            idx_y = np.argmin(np.abs(y[slice_in[0]] - n_lv95))
-            elev_loc = elevation_in[idx_y, idx_x]
+    #         # Find index of location in grid
+    #         idx_x = np.argmin(np.abs(x[slice_in[1]] - e_lv95))
+    #         idx_y = np.argmin(np.abs(y[slice_in[0]] - n_lv95))
+    #         elev_loc = elevation_in[idx_y, idx_x]
 
-            # Check if location has NoData in the clipped mask
-            nodata_mask_in = nodata_mask_clipped[slice_in]
-            is_nodata_loc = nodata_mask_in[idx_y, idx_x]
-            logging.info(f"Standort im Gitter: idx_x={idx_x}, idx_y={idx_y}")
-            logging.info(f"Hoehe am Standort: {elev_loc:.1f} m")
+    #         # Check if location has NoData in the clipped mask
+    #         nodata_mask_in = nodata_mask_clipped[slice_in]
+    #         is_nodata_loc = nodata_mask_in[idx_y, idx_x]
+    #         logging.info(f"Standort im Gitter: idx_x={idx_x}, idx_y={idx_y}")
+    #         logging.info(f"Hoehe am Standort: {elev_loc:.1f} m")
 
-            if not is_nodata_loc and elev_loc > 0.0:
-                logging.info("Bereite Gelaendedaten vor...")
-                # Create directional unit vectors (up) for inner domain
-                slope_loc, aspect_loc, vec_tilt = self.__calc_slope_angles(
-                    elevation, elevation_in, slice_in, idx_y, idx_x, x, y
-                )
-                logging.info(f"Hangneigung am Standort: {slope_loc:.1f} Grad")
-                logging.info(
-                    f"Exposition am Standort: {aspect_loc:.1f} Grad (von Nord)"
-                )
-                sun_elevation, sun_azimuth = HelperFunctions.calc_sunpos(
-                    lat_loc, lon_loc, dt_utc, self.__planets["path"], self.__planets["bsp_file"]
-                )
-                logging.info(f"Sonnen-Elevation: {sun_elevation:.2f} Grad")
-                logging.info(f"Sonnen-Azimut: {sun_azimuth:.2f} Grad (von Nord)")
-                # Calculate incidence angle (sun zenith on tilted surface)
-                incidence_angle = HelperFunctions.calculate_incidence_angle(
-                    slope_loc, aspect_loc, sun_elevation, sun_azimuth
-                )
+    #         if not is_nodata_loc and elev_loc > 0.0:
+    #             logging.info("Bereite Gelaendedaten vor...")
+    #             # Create directional unit vectors (up) for inner domain
+    #             slope_loc, aspect_loc, vec_tilt = self.__calc_slope_angles(
+    #                 elevation, elevation_in, slice_in, idx_y, idx_x, x, y
+    #             )
+    #             logging.info(f"Hangneigung am Standort: {slope_loc:.1f} Grad")
+    #             logging.info(
+    #                 f"Exposition am Standort: {aspect_loc:.1f} Grad (von Nord)"
+    #             )
+    #             sun_elevation, sun_azimuth = HelperFunctions.calc_sunpos(
+    #                 lat_loc, lon_loc, dt_utc, self.__planets["path"], self.__planets["bsp_file"]
+    #             )
+    #             logging.info(f"Sonnen-Elevation: {sun_elevation:.2f} Grad")
+    #             logging.info(f"Sonnen-Azimut: {sun_azimuth:.2f} Grad (von Nord)")
+    #             # Calculate incidence angle (sun zenith on tilted surface)
+    #             incidence_angle = HelperFunctions.calculate_incidence_angle(
+    #                 slope_loc, aspect_loc, sun_elevation, sun_azimuth
+    #             )
 
-                logging.info(
-                    f"Inzidenzwinkel: {incidence_angle:.2f} Grad (Zenitwinkel auf geneigter Flaeche)"
-                )
-                if sun_elevation >= 0:
-                    # Get shadow value at location
-                    ## Making all values = 0
-                    # shadow_value = np.zeros(vec_tilt.shape[:2], dtype=np.uint8)[
-                    #     idx_y, idx_x
-                    # ]
-                    # Determine shadow based on incidence angle and sun elevation
-                    if np.isnan(elev_loc) or is_nodata_loc:
-                        shadow_value = -1  # NODATA
-                    elif sun_elevation < 0:
-                        shadow_value = 3  # Sun below horizon
-                    else:
-                        # Incidence angle > 90° means the surface is facing away from the sun
-                        shadow_value = 1 if incidence_angle > 90 else 0
-                    self.__write_results(
-                        dt_utc,
-                        e_lv95,
-                        n_lv95,
-                        elev_loc,
-                        slope_loc,
-                        aspect_loc,
-                        sun_elevation,
-                        sun_azimuth,
-                        incidence_angle,
-                        shadow_value,
-                    )
-                else:
-                    logging.info("=" * 60)
-                    logging.warning("ERGEBNIS: Die Sonne ist unter dem Horizont!")
-                    logging.info(f"Sonnen-Elevation: {sun_elevation:.2f} Grad")
-                    logging.info("Der gesamte Ort liegt in der Nacht.")
-                    logging.info("=" * 60)
-            else:
-                datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
-                logging.info("=" * 60)
-                logging.info("ERGEBNIS")
-                logging.info("=" * 60)
-                logging.info(f"Datum/Zeit (UTC):  {datum}")
-                logging.info(f"Standort LV95:     E={e_lv95:.2f} / N={n_lv95:.2f}")
-                logging.info(f"Hoehe:             {elev_loc:.1f} m")
-                logging.info("-" * 60)
-                logging.info(f"SCHATTEN-STATUS:   {self.__get_shadow_description(-1)}")
-                logging.info("=" * 60)
-        else:
-            logging.error("Point is outside DOM")
+    #             logging.info(
+    #                 f"Inzidenzwinkel: {incidence_angle:.2f} Grad (Zenitwinkel auf geneigter Flaeche)"
+    #             )
+    #             if sun_elevation >= 0:
+    #                 # Get shadow value at location
+    #                 ## Making all values = 0
+    #                 # shadow_value = np.zeros(vec_tilt.shape[:2], dtype=np.uint8)[
+    #                 #     idx_y, idx_x
+    #                 # ]
+    #                 # Determine shadow based on incidence angle and sun elevation
+    #                 if np.isnan(elev_loc) or is_nodata_loc:
+    #                     shadow_value = -1  # NODATA
+    #                 elif sun_elevation < 0:
+    #                     shadow_value = 3  # Sun below horizon
+    #                 else:
+    #                     # Incidence angle > 90° means the surface is facing away from the sun
+    #                     shadow_value = 1 if incidence_angle > 90 else 0
+    #                 self.__write_results(
+    #                     dt_utc,
+    #                     e_lv95,
+    #                     n_lv95,
+    #                     elev_loc,
+    #                     slope_loc,
+    #                     aspect_loc,
+    #                     sun_elevation,
+    #                     sun_azimuth,
+    #                     incidence_angle,
+    #                     shadow_value,
+    #                 )
+    #             else:
+    #                 logging.info("=" * 60)
+    #                 logging.warning("ERGEBNIS: Die Sonne ist unter dem Horizont!")
+    #                 logging.info(f"Sonnen-Elevation: {sun_elevation:.2f} Grad")
+    #                 logging.info("Der gesamte Ort liegt in der Nacht.")
+    #                 logging.info("=" * 60)
+    #         else:
+    #             datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
+    #             logging.info("=" * 60)
+    #             logging.info("ERGEBNIS")
+    #             logging.info("=" * 60)
+    #             logging.info(f"Datum/Zeit (UTC):  {datum}")
+    #             logging.info(f"Standort LV95:     E={e_lv95:.2f} / N={n_lv95:.2f}")
+    #             logging.info(f"Hoehe:             {elev_loc:.1f} m")
+    #             logging.info("-" * 60)
+    #             logging.info(f"SCHATTEN-STATUS:   {self.__get_shadow_description(-1)}")
+    #             logging.info("=" * 60)
+    #     else:
+    #         logging.error("Point is outside DOM")
     
     def __checkinput(self):
         bsp_path = os.path.join(self.__planets["path"], self.__planets["bsp_file"])
@@ -253,100 +312,100 @@ class SonnenWinkel:
         else:
             raise AttributeError(f".bsp file {bsp_path} not found")
 
-    def __calc_slope_angles(
-        self, elevation, elevation_in, slice_in, idx_y, idx_x, x, y
-    ):
-        inner_dim_0, inner_dim_1 = elevation_in.shape
-        vec_norm = np.zeros((inner_dim_0, inner_dim_1, 3), dtype=np.float32)
-        vec_norm[:, :, 2] = 1.0
-        x_2d, y_2d = np.meshgrid(x, y)
-        slice_in_a1 = self.__get_slice_a1(slice_in)
-        vec_tilt = np.ascontiguousarray(
-            hray.topo_param.slope_plane_meth(
-                x_2d[slice_in_a1], y_2d[slice_in_a1], elevation[slice_in_a1]
-            )[1:-1, 1:-1]
-        )
+    # def __calc_slope_angles(
+    #     self, elevation, elevation_in, slice_in, idx_y, idx_x, x, y
+    # ):
+    #     inner_dim_0, inner_dim_1 = elevation_in.shape
+    #     vec_norm = np.zeros((inner_dim_0, inner_dim_1, 3), dtype=np.float32)
+    #     vec_norm[:, :, 2] = 1.0
+    #     x_2d, y_2d = np.meshgrid(x, y)
+    #     slice_in_a1 = self.__get_slice_a1(slice_in)
+    #     vec_tilt = np.ascontiguousarray(
+    #         hray.topo_param.slope_plane_meth(
+    #             x_2d[slice_in_a1], y_2d[slice_in_a1], elevation[slice_in_a1]
+    #         )[1:-1, 1:-1]
+    #     )
 
-        # Compute slope angle and aspect at location
-        slope_loc = np.rad2deg(np.arccos(vec_tilt[idx_y, idx_x, 2]))
-        aspect_vec = vec_tilt[idx_y, idx_x, :2]
-        aspect_loc = np.rad2deg(np.arctan2(aspect_vec[0], aspect_vec[1]))
-        if aspect_loc < 0:
-            aspect_loc += 360.0
-        return slope_loc, aspect_loc, vec_tilt
+    #     # Compute slope angle and aspect at location
+    #     slope_loc = np.rad2deg(np.arccos(vec_tilt[idx_y, idx_x, 2]))
+    #     aspect_vec = vec_tilt[idx_y, idx_x, :2]
+    #     aspect_loc = np.rad2deg(np.arctan2(aspect_vec[0], aspect_vec[1]))
+    #     if aspect_loc < 0:
+    #         aspect_loc += 360.0
+    #     return slope_loc, aspect_loc, vec_tilt
     
-    def __write_results(
-        self,
-        dt_utc,
-        e_lv95,
-        n_lv95,
-        elev_loc,
-        slope_loc,
-        aspect_loc,
-        sun_elevation,
-        sun_azimuth,
-        incidence_angle,
-        shadow_value,
-    ):
-        datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
-        logging.info("=" * 60)
-        logging.info("ERGEBNIS")
-        logging.info("=" * 60)
-        logging.info(f"Datum/Zeit (UTC):    {datum}")
-        logging.info(f"Standort LV95:       E={e_lv95:.2f} / N={n_lv95:.2f}")
-        logging.info(f"Hoehe:               {elev_loc:.1f} m")
-        logging.info(f"Hangneigung:         {slope_loc:.1f} Grad")
-        logging.info(f"Exposition:          {aspect_loc:.1f} Grad")
-        logging.info(f"Sonnen-Elevation:    {sun_elevation:.2f} Grad")
-        logging.info(f"Sonnen-Azimut:       {sun_azimuth:.2f} Grad")
-        logging.info(f"Inzidenzwinkel:      {incidence_angle:.2f} Grad")
-        logging.info("-" * 60)
-        logging.info(
-            f"SCHATTEN-STATUS:     {self.__get_shadow_description(shadow_value)}"
-        )
-        logging.info("=" * 60)
+    # def __write_results(
+    #     self,
+    #     dt_utc,
+    #     e_lv95,
+    #     n_lv95,
+    #     elev_loc,
+    #     slope_loc,
+    #     aspect_loc,
+    #     sun_elevation,
+    #     sun_azimuth,
+    #     incidence_angle,
+    #     shadow_value,
+    # ):
+    #     datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
+    #     logging.info("=" * 60)
+    #     logging.info("ERGEBNIS")
+    #     logging.info("=" * 60)
+    #     logging.info(f"Datum/Zeit (UTC):    {datum}")
+    #     logging.info(f"Standort LV95:       E={e_lv95:.2f} / N={n_lv95:.2f}")
+    #     logging.info(f"Hoehe:               {elev_loc:.1f} m")
+    #     logging.info(f"Hangneigung:         {slope_loc:.1f} Grad")
+    #     logging.info(f"Exposition:          {aspect_loc:.1f} Grad")
+    #     logging.info(f"Sonnen-Elevation:    {sun_elevation:.2f} Grad")
+    #     logging.info(f"Sonnen-Azimut:       {sun_azimuth:.2f} Grad")
+    #     logging.info(f"Inzidenzwinkel:      {incidence_angle:.2f} Grad")
+    #     logging.info("-" * 60)
+    #     logging.info(
+    #         f"SCHATTEN-STATUS:     {self.__get_shadow_description(shadow_value)}"
+    #     )
+    #     logging.info("=" * 60)
     
-    @staticmethod
-    def __get_slice(x, y, domain):
-        return (
-            slice(
-                np.where(y >= domain["y_max"])[0][-1],
-                np.where(y <= domain["y_min"])[0][0] + 1,
-            ),
-            slice(
-                np.where(x <= domain["x_min"])[0][-1],
-                np.where(x >= domain["x_max"])[0][0] + 1,
-            ),
-        )
+    # @staticmethod
+    # def __get_slice(x, y, domain):
+    #     return (
+    #         slice(
+    #             np.where(y >= domain["y_max"])[0][-1],
+    #             np.where(y <= domain["y_min"])[0][0] + 1,
+    #         ),
+    #         slice(
+    #             np.where(x <= domain["x_min"])[0][-1],
+    #             np.where(x >= domain["x_max"])[0][0] + 1,
+    #         ),
+    #     )
 
-    @staticmethod
-    def __get_slice_a1(slice_in):
-        return (
-            slice(slice_in[0].start - 1, slice_in[0].stop + 1),
-            slice(slice_in[1].start - 1, slice_in[1].stop + 1),
-        )
+    # @staticmethod
+    # def __get_slice_a1(slice_in):
+    #     return (
+    #         slice(slice_in[0].start - 1, slice_in[0].stop + 1),
+    #         slice(slice_in[1].start - 1, slice_in[1].stop + 1),
+    #     )
 
-    @staticmethod
-    def __get_shadow_description(shadow_value):
-        """Get human-readable description of shadow value."""
-        descriptions = {
-            0: "BELEUCHTET (illuminated) - Der Ort liegt in der Sonne",
-            1: "SELBSTBESCHATTET (self-shaded) - Der Hang zeigt von der Sonne weg",
-            2: "GELAENDEBESCHATTET (terrain-shaded) - Schatten umliegende Berge",
-            3: "NICHT BERUECKSICHTIGT (not considered) - Ausserhalb der Maske",
-            -1: "NODATA - Keine gueltige Hoehe am Standort",
-        }
-        return descriptions.get(shadow_value, f"Unbekannter Wert: {shadow_value}")
+    # @staticmethod
+    # def __get_shadow_description(shadow_value):
+    #     """Get human-readable description of shadow value."""
+    #     descriptions = {
+    #         0: "BELEUCHTET (illuminated) - Der Ort liegt in der Sonne",
+    #         1: "SELBSTBESCHATTET (self-shaded) - Der Hang zeigt von der Sonne weg",
+    #         2: "GELAENDEBESCHATTET (terrain-shaded) - Schatten umliegende Berge",
+    #         3: "NICHT BERUECKSICHTIGT (not considered) - Ausserhalb der Maske",
+    #         -1: "NODATA - Keine gueltige Hoehe am Standort",
+    #     }
+    #     return descriptions.get(shadow_value, f"Unbekannter Wert: {shadow_value}")
 
-    @staticmethod
-    def __get_domain(e_lv95, n_lv95, search_dist):
-        buffer = search_dist * 1000
-        return {
-            "x_min": e_lv95 - buffer,
-            "x_max": e_lv95 + buffer,
-            "y_min": n_lv95 - buffer,
-            "y_max": n_lv95 + buffer,
-        }
+    # @staticmethod
+    # def __get_domain(e_lv95, n_lv95, search_dist):
+        # buffer = search_dist * 1000
+        # return {
+        #     "x_min": e_lv95 - buffer,
+        #     "x_max": e_lv95 + buffer,
+        #     "y_min": n_lv95 - buffer,
+        #     "y_max": n_lv95 + buffer,
+        # }
     
     # Grid part 
     def calc_shadow_grid(self, e_lv95, dateoi, timeoi, n_lv95, grid_size, grid_step):
@@ -495,7 +554,7 @@ class InzidenWinkel:
 
         # Read DOM window once
         src = self.__dom._src
-        window = window_from_bounds(xmin, ymin, xmax, ymax, src.transform)
+        window = window_from_bounds(xmin, ymin, xmax, ymax, self.__dom._dom_ext.transform)
         window = window.round_offsets().round_lengths()
 
         elev_tile = src.read(1, window=window)
@@ -511,6 +570,26 @@ class InzidenWinkel:
         x_window = self.__dom._x0 + np.arange(int(width)) * self.__dom._dx
         y_window = self.__dom._y0 + np.arange(int(height)) * self.__dom._dy
         x_full_2d, y_full_2d = np.meshgrid(x_window, y_window)
+
+        # # Read dom_ext
+        # col_start = int((xmin - self.__dom._xmin) / self.__dom._dx)
+        # col_end   = int((xmax - self.__dom._xmin) / self.__dom._dx)
+        # row_start = int((self.__dom._ymax - ymax) / abs(self.__dom._dy))  # row index increases downward
+        # row_end   = int((self.__dom._ymax - ymin) / abs(self.__dom._dy))
+
+        # # Extract elevation tile
+        # elev_tile = self.__dom._dom_ext[row_start:row_end, col_start:col_end]
+        # nodata = self.__dom._nodata
+
+        # if nodata is not None:
+        #     elev_tile = np.where(elev_tile == nodata, np.nan, elev_tile)
+
+        # height, width = elev_tile.shape
+
+        # # Compute slope/aspect using horayzon
+        # x_window = self.__dom._xmin + (col_start + np.arange(width) + 0.5) * self.__dom._dx
+        # y_window = self.__dom._ymax + (-row_start - np.arange(height) - 0.5) * self.__dom._dy
+        # x_full_2d, y_full_2d = np.meshgrid(x_window, y_window)
 
         vec_tilt = hray.topo_param.slope_plane_meth(
             x_full_2d.astype(np.float32),
@@ -549,8 +628,14 @@ class InzidenWinkel:
         grid = theta.astype(np.float32)
         logging.info(f"{os.getpid()} Center{center_x}/{center_y}")
 
-        out_transform = rasterio.windows.transform(window, src.transform)
         # Build output transform based on actual read
+        out_transform = rasterio.windows.transform(window, src.transform)
+        
+        # out_transform = Affine(
+        #     self.__dom._dx, 0, xmin,
+        #     0, self.__dom._dy, ymax
+        # )
+        logging.info(f"{os.getpid()} Transform of dom ext: {out_transform}")
         logging.info(f"{os.getpid()} Tile finished.")
 
         return grid, out_transform
@@ -560,9 +645,31 @@ class InzidenWinkel:
             logging.debug(f"{os.getpid()} Outpath {self.__output_path} found")
         else:
             raise AttributeError(f"{os.getpid()} Outpath {self.__output_path} not found")
-    
+        
+    def write_geotiff(self, grid, transform, output_path):
+        """Write grid to GeoTIFF with float32 data type."""
+        logging.info(f"Schreibe GeoTIFF: {output_path}")
+
+        with rasterio.open(
+            output_path,
+            "w",
+            driver="GTiff",
+            height=grid.shape[0],
+            width=grid.shape[1],
+            count=1,
+            dtype=np.float32,
+            crs=CRS.from_epsg(2056),  # LV95
+            transform=transform,
+            nodata=np.nan,
+        ) as dst:
+            dst.write(grid, 1)
+
+        logging.info(f"  Groesse: {grid.shape[0]} x {grid.shape[1]} Pixel")
+        logging.info("  Datentyp: float32")
+        logging.info("  CRS: EPSG:2056 (LV95)")
     def close(self):
         self.__dom._src.close()
+
 
 class ImgChecker2:
 

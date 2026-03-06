@@ -23,35 +23,35 @@ def parse_args():
     parser.add_argument(
         "--date",
         "-d",
-        default="17.06.2025",
+        default="25.12.2023",
         type=str,
         help="Date (DD.MM.YYYY), default: 13.12.2025",
     )
     parser.add_argument(
         "--time",
         "-t",
-        default="10:26:21",
+        default="10:34:00",
         type=str,
         help="Time UTC (HH:MM:SS), default: 12:22:00",
     )
     parser.add_argument(
         "--east",
         "-e",
-        default=2640546.44,
+        default=2608090,
         type=float,
         help="Easting in LV95 [m], default: 2600000.0 (Bern)",
     )
     parser.add_argument(
         "--north",
         "-n",
-        default=1180763.41,
+        default=1161540,
         type=float,
         help="Northing in LV95 [m], default: 1200000.0 (Bern)",
     )
     parser.add_argument(
         "--grid_size",
         "-gs",
-        default=1000,
+        default=15000,
         type=int,
         help="meters",
     )
@@ -160,7 +160,7 @@ def run(args, cfg):
         datum = dt_utc.strftime('%Y%m%d_%H%M%S')
         
         basename = (
-            f"incidence_{east_lv95}_{north_lv95}_"
+            f"incidence_DSM_{east_lv95}_{north_lv95}_"
             f"{datum}"
         )
         filename_tif = f"{basename}.tif"

@@ -26,14 +26,14 @@ def parse_args():
     parser.add_argument(
         "--date",
         "-d",
-        default="25.12.2023",
+        default="17.06.2025",
         type=str,
         help="Date (DD.MM.YYYY), default: 13.12.2025",
     )
     parser.add_argument(
         "--time",
         "-t",
-        default="10:34:00",
+        default="10:26:21",
         type=str,
         help="Time UTC (HH:MM:SS), default: 12:22:00",
     )
@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument(
         "--grid_size",
         "-gs",
-        default=10000,
+        default=15000,
         type=int,
         help="meters",
     )
@@ -150,14 +150,16 @@ def run(args, cfg):
         datum = dt_utc.strftime('%Y%m%d_%H%M%S')
         
         basename = (
-            f"Shadow_Mask_test4_moins_2_{east_lv95}_{north_lv95}_"
+            f"Shadow_Mask_DSM_moins_2_{east_lv95}_{north_lv95}_"
             f"{datum}"
         )
         filename_tif = f"{basename}.tif"
         output_dir = cfg["output_path_SW"]
         os.makedirs(output_dir, exist_ok=True)
         output_path_tif = os.path.join(output_dir, filename_tif)
-
+        if os.path.isfile(output_path_tif):
+            os.remove(output_path_tif)
+            
         # write files
         sw.write_geotiff(shadow_tile, transform, output_path_tif)
 

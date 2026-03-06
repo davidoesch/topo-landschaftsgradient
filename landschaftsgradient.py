@@ -232,9 +232,18 @@ class SonnenWinkel:
                 )
                 if sun_elevation >= 0:
                     # Get shadow value at location
-                    shadow_value = np.zeros(vec_tilt.shape[:2], dtype=np.uint8)[
-                        idx_y, idx_x
-                    ]
+                    # shadow_value = np.zeros(vec_tilt.shape[:2], dtype=np.uint8)[
+                    #     idx_y, idx_x
+                    # ]
+                    # Determine shadow based on incidence angle and sun elevation
+                    if np.isnan(elev_loc) or is_nodata_loc:
+                        shadow_value = -1  # NODATA
+                    elif sun_elevation < 0:
+                        shadow_value = 3  # Sun below horizon
+                    else:
+                        # Incidence angle > 90° = the surface is facing away from the sun
+                        shadow_value = 1 if incidence_angle > 90 else 0
+                        
                     self.__write_results(
                         dt_utc,
                         e_lv95,
