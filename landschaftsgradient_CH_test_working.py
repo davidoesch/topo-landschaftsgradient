@@ -98,7 +98,7 @@ class DOM:
         self.__dom = dom
         self.__checkinput()
         self.__loadingDOM()
-        self.__extended_DOM()
+        #self.__extended_DOM()
 
     def __checkinput(self):
         if os.path.isfile(self.__dom):
@@ -113,18 +113,18 @@ class DOM:
         self._src = rasterio.open(self.__dom)
         self._src_path = self.__dom
 
-        self._transform_vo = self._src.transform
-        self._width_vo = self._src.width
-        self._height_vo = self._src.height
+        self._transform = self._src.transform
+        self._width = self._src.width
+        self._height = self._src.height
 
         self._nodata = self._src.nodata
-        self._dx = self._transform_vo.a
-        self._dy = self._transform_vo.e
+        self._dx = self._transform.a
+        self._dy = self._transform.e
 
-        self._x0_vo = self._transform_vo.c + self._dx / 2
-        self._y0_vo = self._transform_vo.f + self._dy / 2
+        self._x0 = self._transform.c + self._dx / 2
+        self._y0 = self._transform.f + self._dy / 2
 
-        logging.info(f"{os.getpid()} Loaded DOM_vo metadata: {self._width_vo} × {self._height_vo} px")
+        logging.info(f"{os.getpid()} Loaded DOM metadata: {self._width} × {self._height} px")
         #logging.info(f"DOM_vo info :\n transform_vo: {self._transform_vo}\nnodata: {self._nodata}\ndx: {self._dx}\ndy: {self._dy}\nx0: {self._x0_vo}\ny0: {self._y0_vo} ")
         
         # Extended DOM 
@@ -483,7 +483,7 @@ class SonnenWinkel:
         shadow_grid = np.zeros(vec_tilt.shape[:2], dtype=np.uint8)
 
         # 1 = self-shaded 
-        shadow_grid[theta >= 90 - 2] = 1
+        shadow_grid[theta >= 90 - 15] = 1
         # -1 = nodata
         nodata_mask = np.isnan(elev_tile)
         shadow_grid[nodata_mask] = -1
@@ -554,7 +554,7 @@ class InzidenWinkel:
 
         # Read DOM window once
         src = self.__dom._src
-        window = window_from_bounds(xmin, ymin, xmax, ymax, self.__dom._dom_ext.transform)
+        window = window_from_bounds(xmin, ymin, xmax, ymax, src.transform)
         window = window.round_offsets().round_lengths()
 
         elev_tile = src.read(1, window=window)
@@ -630,7 +630,7 @@ class InzidenWinkel:
 
         # Build output transform based on actual read
         out_transform = rasterio.windows.transform(window, src.transform)
-        
+
         # out_transform = Affine(
         #     self.__dom._dx, 0, xmin,
         #     0, self.__dom._dy, ymax

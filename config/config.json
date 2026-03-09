@@ -1,6 +1,7 @@
 {
-   "dom_path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\DOM\\Thinout_highest_object_10m_LV95_LHN95.tif",
-   "dom_path_v2": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\DOM\\DSM_10m_EPSG2056_CH_clipped_10km.tif",
+   "dom_path_v1": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\DOM\\Thinout_highest_object_10m_LV95_LHN95.tif",
+   "dom_path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\DOM\\DOM_full_CH.tif",
+   "dom_path_v3": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\DOM\\DSM_10m_EPSG2056_CH_clipped_10km.tif",
    "output_path_IG": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\incidence_grid\\Test_CH",
    "output_path_SW": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\shadow_grid",
    "logfolder_path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\log",

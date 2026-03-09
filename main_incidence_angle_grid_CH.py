@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument(
         "--north",
         "-n",
-        default=1100000,
+        default=1060000,
         type=float,
         help="Northing in LV95 [m], default: 1060000 (start of CH grid)",
     )
@@ -304,7 +304,7 @@ def merge_results(tile_results, args, cfg):
     doy_str = f"{dt_utc.timetuple().tm_yday:03d}"
     datum = dt_utc.strftime('%Y%m%d_%H%M%S')
 
-    output_tif = os.path.join(cfg["output_path_IG"], f"incidence_DOM_CH_DOY_{doy_str}_{datum}_CH_3w.tif")
+    output_tif = os.path.join(cfg["output_path_IG"], f"incidence_DOM_CH_DOY_{doy_str}_{datum}_CH_5w.tif")
     if os.path.isfile(output_tif):
         os.remove(output_tif)
     with rasterio.open(
