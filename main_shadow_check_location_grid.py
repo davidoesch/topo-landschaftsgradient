@@ -10,7 +10,7 @@ from argparse import ArgumentParser
 import rasterio
 from rasterio.merge import merge
 from pathlib import Path
-from landschaftsgradient_CH_test_working import SonnenWinkel, HelperFunctions
+from landschaftsgradient_CH_test_working_terrain_shadow import SonnenWinkel, HelperFunctions
 from multiprocessing import Pool
 
 
@@ -26,14 +26,14 @@ def parse_args():
     parser.add_argument(
         "--date",
         "-d",
-        default="17.06.2025",
+        default="25.12.2023",
         type=str,
         help="Date (DD.MM.YYYY), default: 13.12.2025",
     )
     parser.add_argument(
         "--time",
         "-t",
-        default="10:26:21",
+        default="10:34:41",
         type=str,
         help="Time UTC (HH:MM:SS), default: 12:22:00",
     )
@@ -142,6 +142,7 @@ def run(args, cfg):
             timeoi=args["time"],
             grid_size = args["grid_size"],
             grid_step = args["grid_step"],
+            search_dist=cfg["search-dist"],
         )
 
         # Determine output directory (needed for ephemeris data)
@@ -150,8 +151,8 @@ def run(args, cfg):
         datum = dt_utc.strftime('%Y%m%d_%H%M%S')
         
         basename = (
-            f"Shadow_Mask_DSM_moins_2_{east_lv95}_{north_lv95}_"
-            f"{datum}"
+            f"Shadow_Mask_DOM_{east_lv95}_{north_lv95}_"
+            f"{datum}_test_T2"
         )
         filename_tif = f"{basename}.tif"
         output_dir = cfg["output_path_SW"]

@@ -21,28 +21,28 @@ def parse_args():
     parser.add_argument(
         "--date",
         "-d",
-        default="13.12.2025",
+        default="17.06.2025",
         type=str,
         help="Date (DD.MM.YYYY), default: 13.12.2025",
     )
     parser.add_argument(
         "--time",
         "-t",
-        default="12:22:00",
+        default="10:26:21",
         type=str,
         help="Time UTC (HH:MM:SS), default: 12:22:00",
     )
     parser.add_argument(
         "--east",
         "-e",
-        default=2600000.0,
+        default=2613349.02,
         type=float,
         help="Easting in LV95 [m], default: 2600000.0 (Bern)",
     )
     parser.add_argument(
         "--north",
         "-n",
-        default=1200000.0,
+        default=1168533.29,
         type=float,
         help="Northing in LV95 [m], default: 1200000.0 (Bern)",
     )
