@@ -98,7 +98,6 @@ class DOM:
         self.__dom = dom
         self.__checkinput()
         self.__loadingDOM()
-        #self.__extended_DOM()
 
     def __checkinput(self):
         if os.path.isfile(self.__dom):
@@ -125,61 +124,6 @@ class DOM:
         self._y0 = self._transform.f + self._dy / 2
 
         logging.info(f"{os.getpid()} Loaded DOM metadata: {self._width} × {self._height} px")
-        #logging.info(f"DOM_vo info :\n transform_vo: {self._transform_vo}\nnodata: {self._nodata}\ndx: {self._dx}\ndy: {self._dy}\nx0: {self._x0_vo}\ny0: {self._y0_vo} ")
-        
-        # Extended DOM 
-    # def __extended_DOM(self):
-    #     """ 
-    #     Extended DOM starts from:
-    #             E = 2'460'000 / E = 2'860'000
-    #             N = 1'040'000 / N = 1'320'000
-
-    #     new_dom = nodata_dom_ext + dom_vo
-    #     """
-    #     logging.info(f"{os.getpid()} Building extended DOM")
-
-    #     self._xmin = 2460000
-    #     self._xmax = 2860000
-    #     self._ymin = 1040000
-    #     self._ymax = 1320000
-    #     self._transform = Affine(self._dx, 0, self._xmin,
-    #                              0, self._dy, self._ymax)
-        
-    #     # new size
-    #     self._width = int((self._xmax - self._xmin) / self._dx)
-    #     self._height = int((self._ymax - self._ymin) / abs(self._dy))
-    #     logging.info(f"{os.getpid()} Loaded DOM_vo metadata: {self._width} × {self._height} px")
-
-    #     # fil with nodata
-    #     dom_ext = np.full((self._height, self._width), self._nodata, dtype=np.float32)
-        
-    #     logging.info(f"{os.getpid()} Loaded DOM_ext metadata: {self._width} × {self._height} px")
-    #     #logging.info(f"DOM_ext info :\n transform_ext: {self._transform}\nnodata: {self._nodata}\ndx: {self._dx}\ndy: {self._dy}")
-        
-    #     # read open dom_vo
-    #     dom_vo = self._src.read(1).astype(np.float32)
-
-    #     # offsets of original DOM inside extended grid
-    #     x_offset = int((self._transform_vo.c - self._xmin) / self._dx)
-    #     y_offset = int((self._ymax - self._transform_vo.f) / abs(self._dy))
-
-    #     logging.info(f"{os.getpid()} DOM offset inside extended grid: x_offset={x_offset}/ y_offset={y_offset}")
-
-    #     # insert original DOM
-    #     dom_ext[
-    #         y_offset:y_offset + self._height_vo,
-    #         x_offset:x_offset + self._width_vo
-    #     ] = dom_vo
-
-    #     # final extended DOM
-    #     self._dom_ext = dom_ext
-    #     self._x0 = self._xmin + self._dx / 2
-    #     self._y0 = self._ymax + self._dy / 2
-
-    #     logging.info(f"{os.getpid()} Extended DOM created ")
-    #     logging.info(f"x0: {self._x0}\ny0: {self._y0}")
-
-
         
     def close(self):
         if self._src:
@@ -571,25 +515,6 @@ class InzidenWinkel:
         y_window = self.__dom._y0 + np.arange(int(height)) * self.__dom._dy
         x_full_2d, y_full_2d = np.meshgrid(x_window, y_window)
 
-        # # Read dom_ext
-        # col_start = int((xmin - self.__dom._xmin) / self.__dom._dx)
-        # col_end   = int((xmax - self.__dom._xmin) / self.__dom._dx)
-        # row_start = int((self.__dom._ymax - ymax) / abs(self.__dom._dy))  # row index increases downward
-        # row_end   = int((self.__dom._ymax - ymin) / abs(self.__dom._dy))
-
-        # # Extract elevation tile
-        # elev_tile = self.__dom._dom_ext[row_start:row_end, col_start:col_end]
-        # nodata = self.__dom._nodata
-
-        # if nodata is not None:
-        #     elev_tile = np.where(elev_tile == nodata, np.nan, elev_tile)
-
-        # height, width = elev_tile.shape
-
-        # # Compute slope/aspect using horayzon
-        # x_window = self.__dom._xmin + (col_start + np.arange(width) + 0.5) * self.__dom._dx
-        # y_window = self.__dom._ymax + (-row_start - np.arange(height) - 0.5) * self.__dom._dy
-        # x_full_2d, y_full_2d = np.meshgrid(x_window, y_window)
 
         vec_tilt = hray.topo_param.slope_plane_meth(
             x_full_2d.astype(np.float32),

@@ -11,7 +11,6 @@ from pathlib import Path
 import rasterio
 from rasterio.windows import from_bounds as window_from_bounds
 from rasterio.merge import merge
-#from rasterio.transform import from_origin
 from landschaftsgradient_CH_test_working import InzidenWinkel, HelperFunctions, ImgChecker2
 from multiprocessing import Pool
 import multiprocessing as mp
@@ -218,7 +217,6 @@ def run(args, cfg, coord_tuple):
 
         # Log statistics
         valid_values = tile[~np.isnan(tile)]
-        # for all time bands: valid_values = stack[~np.isnan(stack)]
         if len(valid_values) > 0:
             logging.info(f"{os.getpid()} Statistik:")
             logging.info(f"  {os.getpid()} Min Inzidenzwinkel: {np.min(valid_values):.2f} Grad")
@@ -292,19 +290,10 @@ def merge_results(tile_results, args, cfg):
             count=stack.shape[0],
             dtype=stack.dtype,
            transform=transform,
-        #    transform = rasterio.transform.from_origin(
-        #         transform.c,   # west
-        #         transform.f,   # north
-        #         args["grid_step"],
-        #         args["grid_step"]
-        #     ),
             crs=crs
         ) 
         for i in range(stack.shape[0]):
              dataset.write(stack[i], i+1)
-            
-        # write whole stack at once:
-        #dataset.write(stack)
 
         src_files_to_mosaic.append(dataset)
 
@@ -329,18 +318,14 @@ def merge_results(tile_results, args, cfg):
         crs=crs,
         transform=out_transform,
         tiled=True,
-        compress="LZW",
-        BIGTIFF="YES",
-        predictor=2,
+        compress="LZW"
     ) as dst:
-        # write all bands at once (newly added) 
-        #dst.write(mosaic)
 
         start_sec = 10*3600
         step_sec = 120
 
         for i in range(mosaic.shape[0]):
-            dst.write(mosaic[i], i+1)  # to remove if dst.write(mosaic)
+            dst.write(mosaic[i], i+1)
             ms_value = (start_sec + i*step_sec) * 1000  # milliseconds for 10:00 + i*step
             dst.set_band_description(i+1, f"shadow_{ms_value}")
             dst.update_tags(i+1, TIMESTAMP_MILLISECONDS=str(ms_value))
