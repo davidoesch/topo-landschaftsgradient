@@ -291,20 +291,20 @@ def merge_results(tile_results, args, cfg):
             width=stack.shape[2],
             count=stack.shape[0],
             dtype=stack.dtype,
-           transform=transform,
-        #    transform = rasterio.transform.from_origin(
-        #         transform.c,   # west
-        #         transform.f,   # north
-        #         args["grid_step"],
-        #         args["grid_step"]
-        #     ),
+            #transform=transform,
+            transform = rasterio.transform.from_origin(
+                    transform.c,   # west
+                    transform.f,   # north
+                    args["grid_step"],
+                    args["grid_step"]
+            ),
             crs=crs
         ) 
-        for i in range(stack.shape[0]):
-             dataset.write(stack[i], i+1)
+        #for i in range(stack.shape[0]):
+        #     dataset.write(stack[i], i+1)
             
         # write whole stack at once:
-        #dataset.write(stack)
+        dataset.write(stack)
 
         src_files_to_mosaic.append(dataset)
 
@@ -315,7 +315,7 @@ def merge_results(tile_results, args, cfg):
     doy_str = f"{dt_utc.timetuple().tm_yday:03d}"
     datum = dt_utc.strftime('%Y%m%d_%H%M%S')
 
-    output_tif = os.path.join(cfg["output_path_IG"], f"incidence_DOM_CH_DOY_{doy_str}_{datum}_CH_5w_test2.tif")
+    output_tif = os.path.join(cfg["output_path_IG"], f"incidence_DOM_CH_DOY_{doy_str}_{datum}_CH_6w_test1.tif")
     if os.path.isfile(output_tif):
         os.remove(output_tif)
     with rasterio.open(
@@ -334,13 +334,13 @@ def merge_results(tile_results, args, cfg):
         predictor=2,
     ) as dst:
         # write all bands at once (newly added) 
-        #dst.write(mosaic)
+        dst.write(mosaic)
 
         start_sec = 10*3600
         step_sec = 120
 
         for i in range(mosaic.shape[0]):
-            dst.write(mosaic[i], i+1)  # to remove if dst.write(mosaic)
+            #dst.write(mosaic[i], i+1)  # to remove if dst.write(mosaic)
             ms_value = (start_sec + i*step_sec) * 1000  # milliseconds for 10:00 + i*step
             dst.set_band_description(i+1, f"shadow_{ms_value}")
             dst.update_tags(i+1, TIMESTAMP_MILLISECONDS=str(ms_value))
@@ -394,9 +394,9 @@ if __name__ == "__main__":
                 
                 # multiprocess
                 n_proc = min(len(tasks), os.cpu_count() - 1)
-                logging.info(f"Starting processing of {len(tasks)} tiles with {5} workers")
+                logging.info(f"Starting processing of {len(tasks)} tiles with {4} workers")
 
-                with ctx.Pool(processes=5, initializer=setup_logging, initargs=(logging.INFO,)) as pool:
+                with ctx.Pool(processes=4, initializer=setup_logging, initargs=(logging.INFO,)) as pool:
                     try:
                         mosaic_CH = pool.starmap(run, tasks)
                     except KeyboardInterrupt:

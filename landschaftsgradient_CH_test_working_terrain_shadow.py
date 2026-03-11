@@ -236,17 +236,49 @@ class SonnenWinkel:
         # Number of azimuth sectors for horizon search
         # 360 gives ~1° resolution; use 72 (5°) for speed
         num_sectors = 360
+        # ── Build vert_grid: shape (rows, cols, 3) in cartesian metres ───
+        # HORAYZON works in local cartesian space; x/y are already metric (LV95)
+        rows, cols = elev_inner.shape
+        x_2d_inner = np.tile(x_inner[np.newaxis, :], (rows, 1)).astype(np.float32)
+        y_2d_inner = np.tile(y_inner[:, np.newaxis], (1, cols)).astype(np.float32)
+        z_2d_inner = np.nan_to_num(elev_inner, nan=0.0).astype(np.float32)
+
+        vert_grid = np.stack([x_2d_inner, y_2d_inner, z_2d_inner], axis=-1)  # (rows, cols, 3)
+        vert_grid_flat = vert_grid.reshape(-1).astype(np.float32)
+
+        # ── vec_norm: surface normal vectors (from slope_plane_meth output) ─
+        vec_norm = vec_tilt.astype(np.float32)   # already (rows, cols, 3) after trimming
+
+        # ── vec_north: unit vector pointing geographic North in local coords ─
+        # In LV95 (metric), North = +Y direction → (0, 1, 0)
+        vec_north = np.zeros((rows, cols, 3), dtype=np.float32)
+        vec_north[..., 1] = 1.0
+       
+        # ── offsets: pixel spacing ───────────────────────────────────────
+        offset_0 = float(grid_step)   # row spacing (metres)
+        offset_1 = float(grid_step)   # col spacing (metres)
+        logging.info(f"offset_0={offset_0}, offset_1={offset_1}, dist_search={float(grid_size)}")
 
         logging.info("Computing HORAYZON horizon angles (this may take a moment)...")
+        logging.info(f"elev_inner shape: {elev_inner.shape}")
+        logging.info(f"vec_tilt shape: {vec_tilt.shape}")
+        logging.info(f"vec_norm shape: {vec_norm.shape}")
+        logging.info(f"rows={rows}, cols={cols}")
+        
         import inspect
         logging.info(f"horizon_gridded signature: {inspect.signature(hray.horizon.horizon_gridded)}")
         # hray.horizon.horizon_gridded returns shape (rows, cols, num_sectors)
         # Each value is the horizon elevation angle [radians] in that azimuth sector
         horizon_elev = hray.horizon.horizon_gridded(
-            x_inner,
-            y_inner,
-            np.nan_to_num(elev_inner, nan=0.0).astype(np.float32),
-            num_sectors,
+            vert_grid_flat,          # (rows, cols, 3)
+            rows,               # dem_dim_0
+            cols,               # dem_dim_1
+            vec_norm,           # (rows, cols, 3)
+            vec_north,          # (rows, cols, 3)
+            offset_0,           # row pixel size [m]
+            offset_1,           # col pixel size [m]
+            search_dist,        # search radius [m]
+            azim_num=num_sectors,
         )   # shape: (rows, cols, num_sectors)
 
         # Map sun azimuth to sector index
@@ -347,8 +379,6 @@ class InzidenWinkel:
 
         if nodata is not None:
             elev_tile = np.where(elev_tile == nodata, np.nan, elev_tile)
-
-        height, width = elev_tile.shape
 
         # Compute slope/aspect using horayzon
         x_window = self.__dom._x0 + np.arange(int(width)) * self.__dom._dx
