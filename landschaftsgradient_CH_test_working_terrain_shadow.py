@@ -156,7 +156,7 @@ class SonnenWinkel:
         Shadow values:
             0 = BELEUCHTET (illuminated)
             1 = SELBSTBESCHATTET (self-shaded)
-            2 = GELAENDEBESCHATTET (terrain-shaded)  [future extension]
+            2 = GELAENDEBESCHATTET (terrain-shaded)
             3 = NICHT BERUECKSICHTIGT (sun below horizon)
             225 = NODATA (invalid elevation)
         """
@@ -293,9 +293,10 @@ class SonnenWinkel:
         # Prepare shadow grid (same resolution as vec_tilt)
         nodata_mask = np.isnan(elev_inner)
         shadow_grid = np.zeros(elev_inner.shape[:2], dtype=np.uint8)
-        
         # -1 = nodata
         shadow_grid[nodata_mask] = 255
+        
+        # 0 par défaut illumated
 
         # 1 = self-shaded 
         shadow_grid[theta >= 90] = 1
