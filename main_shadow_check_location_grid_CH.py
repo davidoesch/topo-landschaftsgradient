@@ -28,14 +28,14 @@ def parse_args():
     parser.add_argument(
         "--date",
         "-d",
-        default="20.06.2025",
+        default="25.12.2023",
         type=str,
         help="Date (DD.MM.YYYY), default: 13.12.2025",
     )
     parser.add_argument(
         "--time",
         "-t",
-        default="10:00:00",
+        default="10:34:41",
         type=str,
         help="Time UTC (HH:MM:SS), default: 10:00:00 (till 11:02:00 every 2 minutes)",
     )
@@ -114,14 +114,15 @@ def log_listener_process(log_queue: mp.Queue, log_path: Path, loglvl=logging.INF
 
 def get_config():
     with open(
-        os.path.join(os.path.dirname(__file__), "config", "config.json"), "r"
+        os.path.join(os.path.dirname(__file__), "config", "iluina.json"), "r"
     ) as file:
         data = json.load(file)
     return data
 
 
-def logparameter(args, cfg):
-    lon_loc, lat_loc = HelperFunctions.lv95_to_wgs84(args["east"], args["north"])
+def logparameter(args, cfg, coord_tuple):
+    tile_e, tile_n = coord_tuple
+    lon_loc, lat_loc = HelperFunctions.lv95_to_wgs84(tile_e, tile_n)
     dt_utc = HelperFunctions.parse_datetime(args["date"], args["time"])
     datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
     east_lv95 = args["east"]
@@ -134,6 +135,8 @@ def logparameter(args, cfg):
     logging.info(f"{os.getpid()} SONNENWINKEL-RASTER BERECHNUNG")
     logging.info(f"{os.getpid()}" + "=" * 60)
     logging.info(f"{os.getpid()} Datum/Zeit (UTC): {datum}")
+    logging.info(f"{os.getpid()} Tile LV95:        E={tile_e:.2f} / N={tile_n:.2f}")
+    logging.info(f"{os.getpid()} Tile WGS84:       Lon={lon_loc:.5f} / Lat={lat_loc:.5f}")
     logging.info(f"{os.getpid()} Standort LV95:    E={east_lv95:.2f} / N={north_lv95:.2f}")
     logging.info(f"{os.getpid()} Standort WGS84:   Lon={lon_loc:.5f} / Lat={lat_loc:.5f}")
     logging.info(
@@ -147,14 +150,14 @@ def logparameter(args, cfg):
 def run(args, cfg, coord_tuple):
     logger = logging.getLogger()
     logger.info(f"Start processing data...{os.getpid()}")
-    logparameter(args, cfg)
+    logparameter(args, cfg, coord_tuple)
    
     try:
         # initialize class with static config parameters
         sw = SonnenWinkel(
             dom=cfg["dom_path"],
             planets=cfg["planets"],
-            search_dist=cfg["search-dist"],
+            search_dist=cfg["search_dist"],
             output_path=cfg["output_path_SW"],
         )
         
@@ -211,25 +214,24 @@ def run(args, cfg, coord_tuple):
         crs_value = getattr(sw, "crs", None) or "EPSG:2056"
 
         # Log statistics
-        valid_values = shadow_tile[~np.isnan(shadow_tile)]
-        if len(valid_values) > 0:
-            logging.info(f"{os.getpid()} Statistik:")
-            logging.info(f"  {os.getpid()} Min Sonnenwinkel: {np.min(valid_values):.2f} Grad")
-            logging.info(f"  {os.getpid()} Max Sonnewinkel: {np.max(valid_values):.2f} Grad")
-            logging.info(f"  {os.getpid()} Mittelwert: {np.mean(valid_values):.2f} Grad")
-        else:
-            logging.warning(f"{os.getpid()} Keine gueltigen Werte berechnet!")
+        # valid_values = shadow_tile[~np.isnan(shadow_tile)]
+        # if len(valid_values) > 0:
+        #     logging.info(f"{os.getpid()} Statistik:")
+        #     logging.info(f"  {os.getpid()} Min Sonnenwinkel: {np.min(valid_values):.2f} Grad")
+        #     logging.info(f"  {os.getpid()} Max Sonnewinkel: {np.max(valid_values):.2f} Grad")
+        #     logging.info(f"  {os.getpid()} Mittelwert: {np.mean(valid_values):.2f} Grad")
+        # else:
+        #     logging.warning(f"{os.getpid()} Keine gueltigen Werte berechnet!")
 
-        # if args["compare"]:
-        #     chk = ImgChecker2(output_path_tif, cfg)
-        #     chk.comparer()
+        total_pixels = shadow_tile.size
+        illuminated_pixels = int(np.sum(shadow_tile == 1))  # ← count the 1s
+        pct = 100.0 * illuminated_pixels / total_pixels
+        logging.info(f"Illuminated: {illuminated_pixels} / {total_pixels} ({pct:.1f} %)")
+
     except Exception:
         logging.exception(f"{os.getpid()} Error inside run()")
         raise
 
-    # except Exception as e:
-    #     logging.error(e)
-    #     sys.exit(-1)
     logging.info(f"{os.getpid()}"+"=" * 60)
     logging.info(f"{os.getpid()} End processing data..")
     logging.info(f"{os.getpid()}"+"=" * 60)
@@ -240,8 +242,8 @@ def run(args, cfg, coord_tuple):
 
 
 def calc_grid(args, cfg) -> list[tuple[float, float]]:
-    n_e = 4     # numbe of cells in east direction: 18
-    n_n = 4    # number of cells in north direction: 12
+    n_e = 18    # numbe of cells in east direction: 18
+    n_n = 12    # number of cells in north direction: 12
     grid_CH = []  # list containing coordinate tuples, e.g. [(2600000, 1200000), (2620000, 1220000)]
     for e in range(n_e):
         for n in range(n_n):
@@ -301,9 +303,10 @@ def merge_results(tile_results, args, cfg):
     doy_str = f"{dt_utc.timetuple().tm_yday:03d}"
     datum = dt_utc.strftime('%Y%m%d_%H%M%S')
 
-    output_tif = os.path.join(cfg["output_path_SW"], f"Sonnen_DOM_CH_DOY_{doy_str}_{datum}_5x5_test1.tif")
+    output_tif = os.path.join(cfg["output_path_SW"], f"Sonnen_DOM_CH_DOY_{doy_str}_{datum}_CH_test1.tif")
     if os.path.isfile(output_tif):
         os.remove(output_tif)
+
     with rasterio.open(
         output_tif,
         'w',
@@ -376,7 +379,7 @@ if __name__ == "__main__":
                 tasks = [(__args, __cfg, coord_tuple) for coord_tuple in valid_tiles]
                 
                 # multiprocess
-                n_proc = 2 #min(len(tasks), os.cpu_count() - 1)
+                n_proc = 3 #min(len(tasks), os.cpu_count() - 1)
                 logging.info(f"Starting processing of {len(tasks)} tiles with {n_proc} workers")
 
                 with ctx.Pool(processes=n_proc, initializer=setup_logging, initargs=(logging.INFO,)) as pool:

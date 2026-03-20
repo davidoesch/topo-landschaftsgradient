@@ -27,6 +27,14 @@ class HelperFunctions:
         lon, lat = transformer.transform(e_lv95, n_lv95)
         return lon, lat
 
+    def wgs84_to_lv95(lon, lat):
+        """Convert WGS84 (EPSG:4326) to LV95 (EPSG:2056) coordinates."""
+        crs_wgs84 = CRS.from_epsg(4326)
+        crs_lv95 = CRS.from_epsg(2056)
+        transformer = Transformer.from_crs(crs_wgs84, crs_lv95, always_xy=True)
+        e, n = transformer.transform(lon, lat)
+        return e, n
+
     def parse_datetime(dateoi, timeoi):
         """Parse date and time strings to datetime object (UTC)."""
         dt_str = f"{dateoi} {timeoi}"
@@ -100,7 +108,6 @@ class DOM_sw:
         self.__dom = dom
         self.__search_dist = search_dist
         self.__output_path = output_path
-        self.__domain_lv95 = None
         self.__checkinput()
         
     def __checkinput(self):
@@ -109,8 +116,8 @@ class DOM_sw:
         else:
             raise AttributeError(f"DOM {self.__dom} not found")
         
-    def reproject_dom(self, e_lv95, n_lv95, grid_size, search_dist):
-        self.__domain_lv95 = {
+    def reproject_dom(self, e_lv95, n_lv95, grid_size, grid_step, search_dist):
+        domain_lv95 = {
             "x_min": e_lv95,
             "x_max": e_lv95 + grid_size,
             "y_min": n_lv95,
@@ -128,15 +135,17 @@ class DOM_sw:
         ct = osr.CoordinateTransformation(srs_lv95, srs_wgs84)
 
         # Convert inner domain corners LV95 -> WGS84 to get domain in degrees
-        corners_lv95 = [(self.__domain_lv95["x_min"], self.__domain_lv95["y_min"]),
-                        (self.__domain_lv95["x_max"], self.__domain_lv95["y_min"]),
-                        (self.__domain_lv95["x_max"], self.__domain_lv95["y_max"]),
-                        (self.__domain_lv95["x_min"], self.__domain_lv95["y_max"])]
+        corners_lv95 = [(domain_lv95["x_min"], domain_lv95["y_min"]),
+                        (domain_lv95["x_max"], domain_lv95["y_min"]),
+                        (domain_lv95["x_max"], domain_lv95["y_max"]),
+                        (domain_lv95["x_min"], domain_lv95["y_max"])]
         corners_wgs84 = [ct.TransformPoint(px, py) for px, py in corners_lv95]
-        domain = {"lon_min": min(c[0] for c in corners_wgs84),
+        domain = {
+                "lon_min": min(c[0] for c in corners_wgs84),
                 "lon_max": max(c[0] for c in corners_wgs84),
                 "lat_min": min(c[1] for c in corners_wgs84),
-                "lat_max": max(c[1] for c in corners_wgs84)}
+                "lat_max": max(c[1] for c in corners_wgs84)
+        }
         
         # Clamp domain to valid geographic range (important for horayzon)
         domain["lat_min"] = max(-89.9, domain["lat_min"])
@@ -150,10 +159,8 @@ class DOM_sw:
         try:
             domain_outer = hray.domain.curved_grid(domain, search_dist, ellps)
 
-            # 🚨 sanity check (VERY IMPORTANT)
             lon_span = domain_outer["lon_max"] - domain_outer["lon_min"]
             lat_span = domain_outer["lat_max"] - domain_outer["lat_min"]
-
             if lon_span > 1 or lat_span > 1:
                 raise ValueError("curved_grid produced unrealistic domain")
 
@@ -171,7 +178,7 @@ class DOM_sw:
         logging.warning(f"DOMAIN OUTER: {domain_outer}")
         
         # Target resolution in WGS84 degrees (~10 m at lat 47 N)
-        dem_res_deg = 10.0 / 111320.0  # 1 degree latitude ~ 111.32 km
+        dem_res_deg = grid_step / 111320.0  # 1 degree latitude ~ 111.32 km
 
         # Warp DOM from LV95 to WGS84 at outer domain extent (in memory)
         ds_src = gdal.Open(self.__dom)
@@ -204,7 +211,7 @@ class DOM_sw:
         logging.info("Ilu: Elevation range of DOM: %.1f" % elevation.min()
             + " - %.1f" % elevation.max() + " m")
         
-        return elevation, lon, lat, domain, srs_wgs84
+        return elevation, lon, lat, domain, domain_lv95, srs_wgs84
 
 
 class SonnenWinkel:
@@ -233,7 +240,15 @@ class SonnenWinkel:
             raise AttributeError(f"{os.getpid()} Outpath {self.__output_path} not found")
 
     def calc_illuminate_grid(self, e_lv95, n_lv95, grid_size, grid_step, timeoi, dateoi):
-        self.__elevation, self.__lon, self.__lat, self.__domain, self.__srs_wgs84 = self.__dom.reproject_dom(e_lv95, n_lv95, grid_size, self.__search_dist)
+        (
+            self.__elevation,
+            self.__lon,
+            self.__lat, 
+            self.__domain, 
+            self.__domain_lv95,
+            self.__srs_wgs84,
+         ) = self.__dom.reproject_dom(e_lv95, n_lv95, grid_size, grid_step, self.__search_dist)
+        
         ellps = "WGS84"
         # Compute indices of inner domain
         slice_in = (slice(np.where(self.__lat >= self.__domain["lat_max"])[0][-1],
@@ -255,7 +270,9 @@ class SonnenWinkel:
 
         # Compute ENU coordinates
         trans_ecef2enu = hray.transform.TransformerEcef2enu(
-            lon_or=self.__lon[int(len(self.__lon) / 2)], lat_or=self.__lat[int(len(self.__lat) / 2)], ellps=ellps)
+            lon_or=self.__lon[int(len(self.__lon) / 2)], 
+            lat_or=self.__lat[int(len(self.__lat) / 2)], 
+            ellps=ellps)
         x_enu, y_enu, z_enu = hray.transform.ecef2enu(x_ecef, y_ecef, z_ecef,
                                                     trans_ecef2enu)
 
@@ -293,7 +310,7 @@ class SonnenWinkel:
         # Initialise terrain
         mask = np.ones(vec_tilt_enu.shape[:2], dtype=np.uint8)
         terrain = hray.shadow.Terrain()
-        dim_in_0, dim_in_1 = vec_tilt_enu.shape[0], vec_tilt_enu.shape[1]
+        #dim_in_0, dim_in_1 = vec_tilt_enu.shape[0], vec_tilt_enu.shape[1]
         terrain.initialise(vert_grid, dem_dim_0, dem_dim_1,
                         offset_0, offset_1, vec_tilt_enu, vec_norm_enu,
                         surf_enl_fac, mask=mask, elevation=elevation_ortho,
@@ -322,21 +339,25 @@ class SonnenWinkel:
         sun_position = np.array([x_s, y_s, z_s], dtype=np.float32)
         logging.info(f"{os.getpid()} Sun altitude: {alt.degrees:.2f}°, azimuth: {az.degrees:.2f}°")
 
+        # buffer shadow
         shadow_buffer = np.zeros(vec_tilt_enu.shape[:2], dtype=np.uint8)
         terrain.shadow(sun_position, shadow_buffer)
         logging.info(f"{os.getpid()} Shadow computation time: %.2f s" % (time.time() - t_beg))
-        
-        return shadow_buffer, transform_from_bounds(
+
+        illuminated = (shadow_buffer == 0).astype(np.uint8)
+
+        lv95_transform = transform_from_bounds(
             self.__domain_lv95["x_min"],
             self.__domain_lv95["y_min"],
             self.__domain_lv95["x_max"],
             self.__domain_lv95["y_max"],
-            shadow_buffer.shape[1],
-            shadow_buffer.shape[0]
-)
+            illuminated.shape[1],
+            illuminated.shape[0],
+        )
+        return illuminated, lv95_transform
 
     def close(self):
-        self.__dom._src.close()
+        pass
 
 
 class DOM_iw:

@@ -120,7 +120,8 @@ def get_config():
     return data
 
 
-def logparameter(args, cfg):
+def logparameter(args, cfg, coord_tuple):
+    tile_e, tile_n = coord_tuple
     lon_loc, lat_loc = HelperFunctions.lv95_to_wgs84(args["east"], args["north"])
     dt_utc = HelperFunctions.parse_datetime(args["date"], args["time"])
     datum = dt_utc.strftime('%d.%m.%Y %H:%M:%S')
@@ -134,6 +135,8 @@ def logparameter(args, cfg):
     logging.info(f"{os.getpid()} INZIDENZWINKEL-RASTER BERECHNUNG")
     logging.info(f"{os.getpid()}" + "=" * 60)
     logging.info(f"{os.getpid()} Datum/Zeit (UTC): {datum}")
+    logging.info(f"{os.getpid()} Tile LV95:        E={tile_e:.2f} / N={tile_n:.2f}")
+    logging.info(f"{os.getpid()} Tile WGS84:       Lon={lon_loc:.5f} / Lat={lat_loc:.5f}")
     logging.info(f"{os.getpid()} Standort LV95:    E={east_lv95:.2f} / N={north_lv95:.2f}")
     logging.info(f"{os.getpid()} Standort WGS84:   Lon={lon_loc:.5f} / Lat={lat_loc:.5f}")
     logging.info(
@@ -147,7 +150,7 @@ def logparameter(args, cfg):
 def run(args, cfg, coord_tuple):
     logger = logging.getLogger()
     logger.info(f"Start processing data...{os.getpid()}")
-    logparameter(args, cfg)
+    logparameter(args, cfg, coord_tuple)
     dt_utc = HelperFunctions.parse_datetime(args["date"], args["time"])
     try:
         # initialize iw class with static config parameters
@@ -159,7 +162,7 @@ def run(args, cfg, coord_tuple):
 
         inc_bands = []
         inc_transform_ref = None
-        shape_ref = None
+        inc_shape_ref = None
         # calculate incidence for every 10x10m cell of 20x20km tile
         inc_tile, inc_transform = iw.calc_incidence_grid(
             e_lv95=coord_tuple[0],
@@ -172,13 +175,13 @@ def run(args, cfg, coord_tuple):
 
         if inc_transform_ref is None:
             inc_transform_ref = inc_transform
-            shape_ref = inc_tile.shape
+            inc_shape_ref = inc_tile.shape
         else:
             if inc_transform != inc_transform_ref:
                 logging.warning("Inc : Transform changed across time slices; using the first transform.")
-            if inc_tile.shape != shape_ref:
+            if inc_tile.shape != inc_shape_ref:
                 raise ValueError(
-                    f"Inc : Inconsistent tile shapes across time slices: got {inc_tile.shape}, expected {shape_ref}"
+                    f"Inc : Inconsistent tile shapes across time slices: got {inc_tile.shape}, expected {inc_shape_ref}"
                 )
 
         inc_bands.append(inc_tile)
@@ -204,9 +207,49 @@ def run(args, cfg, coord_tuple):
         sw = SonnenWinkel(
             dom=cfg["dom_path"],
             planets=cfg["planets"],
+            search_dist=cfg["search_dist"],
             output_path=cfg["output_path_SW"],
         )
+        
+        ilu_bands = []
+        ilu_transform_ref = None
+        ilu_shape_ref = None
 
+        #for t_str in time_strings:
+        # calculate illuminate for every 10x10m cell of 20x20km tile
+        ilu_tile, ilu_transform = sw.calc_illuminate_grid(
+            e_lv95=coord_tuple[0],
+            n_lv95=coord_tuple[1],
+            dateoi=args["date"],
+            timeoi=args["time"],
+            grid_size=args["grid_size"],
+            grid_step=args["grid_step"],
+        )
+
+        if ilu_transform_ref is None:
+            ilu_transform_ref = ilu_transform
+            ilu_shape_ref = ilu_tile.shape
+        else:
+            if ilu_transform_ref != ilu_transform_ref:
+                logging.warning("Transform changed across time slices; using the first transform.")
+            if ilu_tile.shape != ilu_shape_ref:
+                raise ValueError(
+                    f"Inconsistent tile shapes across time slices: got {ilu_tile.shape}, expected {ilu_shape_ref}"
+                )
+
+        ilu_bands.append(ilu_tile)
+
+        if not ilu_bands:
+            raise RuntimeError("No bands were created for this tile")
+        
+        ilu_stack = np.stack(ilu_bands, axis=0)  # [time, H, W]
+        ilu_crs_value = getattr(sw, "crs", None) or "EPSG:2056"
+        
+        # Log statistics
+        total_pixels = ilu_tile.size
+        illuminated_pixels = int(np.sum(ilu_tile == 1))  # ← count the 1s
+        pct = 100.0 * illuminated_pixels / total_pixels
+        logging.info(f"Illuminated: {illuminated_pixels} / {total_pixels} ({pct:.1f} %)")
 
     except Exception:
         logging.exception(f"{os.getpid()} Inc: Error inside run()")
@@ -219,9 +262,7 @@ def run(args, cfg, coord_tuple):
     iw.close()
     sw.close()
 
-    ### Sonnenwinkel here
-
-    return inc_stack, inc_transform_ref, inc_crs_value
+    return inc_stack, inc_transform_ref, inc_crs_value, ilu_stack, ilu_transform_ref, ilu_crs_value, 
 
 
 def orbit_parameter():
@@ -247,6 +288,9 @@ def tile_contains_valid_data(dom_path, e, n, grid_size):
             n + grid_size,
             src.transform
         )
+       # for 0 -size window guard
+        if window.width <= 0 or window.height <= 0:
+            return False
         data = src.read(1, window=window)
         nodata = src.nodata
 
@@ -255,7 +299,7 @@ def tile_contains_valid_data(dom_path, e, n, grid_size):
         return not np.all(np.isnan(data))
 
 
-def merge_results_iw(tile_results, args, cfg):
+def merge_results(tile_results, args, cfg, output_path, label):
     logging.info(f"{os.getpid()} Merging all tiles into a single Switzerland-wide TIFF...")
     
     src_files_to_mosaic = []
@@ -287,7 +331,7 @@ def merge_results_iw(tile_results, args, cfg):
     doy_str = f"{dt_utc.timetuple().tm_yday:03d}"
     datum = dt_utc.strftime('%Y%m%d_%H%M%S')
 
-    output_tif = os.path.join(cfg["output_path_IG"], f"incidence_DOM_CH_DOY_{doy_str}_{datum}_1x1_test1.tif")
+    output_tif = os.path.join(output_path, f"{label}_DOM_CH_DOY_{doy_str}_{datum}_1x1_test1.tif")
     if os.path.isfile(output_tif):
         os.remove(output_tif)
     with rasterio.open(
@@ -321,60 +365,6 @@ def merge_results_iw(tile_results, args, cfg):
          ds.close()
     for mf in memfiles:
          mf.close()
-
-def merge_results_sw(tile_results, args, cfg):
-    logging.info("Merging Sonnenwinkel tiles...")
-
-    src_files_to_mosaic = []
-    memfiles = []
-
-    for stack, transform, crs in tile_results:
-        memfile = rasterio.io.MemoryFile()
-        memfiles.append(memfile)
-
-        dataset = memfile.open(
-            driver='GTiff',
-            height=stack.shape[1],
-            width=stack.shape[2],
-            count=stack.shape[0],
-            dtype=stack.dtype,
-            transform=transform,
-            crs=crs
-        )
-
-        for i in range(stack.shape[0]):
-            dataset.write(stack[i], i+1)
-
-        src_files_to_mosaic.append(dataset)
-
-    mosaic, out_transform = merge(src_files_to_mosaic)
-    shadow_buffer = mosaic[0]
-
-    # garder uniquement les pixels illuminés
-    illuminated = (shadow_buffer == 0).astype(np.uint8)
-
-    ts_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    output_tif = os.path.join(
-        cfg["output_path_SW"],
-        f"{ts_str}_shadow_illuminated.tif"
-    )
-
-    with rasterio.open(
-        output_tif,
-        'w',
-        driver='GTiff',
-        height=illuminated.shape[0],
-        width=illuminated.shape[1],
-        count=1,
-        dtype=illuminated.dtype,
-        crs=crs,
-        transform=out_transform,
-        compress="LZW"
-    ) as dst:
-        dst.write(illuminated, 1)
-
-    logging.info(f"Sonnenwinkel illuminated TIFF written: {output_tif}")
 
 if __name__ == "__main__":
     """Entrypoint for the application"""
@@ -421,8 +411,8 @@ if __name__ == "__main__":
                     try:
                         results = pool.starmap(run, tasks)
 
-                        incidence_CH = [res[0] for res in results]
-                        illuminate_CH = [res[1] for res in results]
+                        incidence_CH = [(res[0], res[1], res[2]) for res in results]
+                        illuminate_CH = [(res[3], res[4], res[5]) for res in results]
                     except KeyboardInterrupt:
                         logging.warning("KeyboardInterrupt received. Terminating workers...")
                         pool.terminate()
@@ -431,8 +421,8 @@ if __name__ == "__main__":
             
                 # as soon as all workers have done their job: join merge
                 # single process
-                merge_results_iw(incidence_CH, __args, __cfg)
-                merge_results_sw(illuminate_CH, __args, __cfg)
+                merge_results(incidence_CH, __args, __cfg, __cfg["output_path_IG"], "incidence")
+                merge_results(illuminate_CH, __args, __cfg, __cfg["output_path_SW"], "illuminate")
 
                 # Listener beenden
                 log_queue.put_nowait(None)
@@ -447,3 +437,57 @@ if __name__ == "__main__":
                 sys.exit(1)
     else:
         print("Not working as logfolder path not found")
+
+# def merge_results_sw(tile_results, args, cfg):
+#     logging.info("Merging Sonnenwinkel tiles...")
+
+#     src_files_to_mosaic = []
+#     memfiles = []
+
+#     for stack, transform, crs in tile_results:
+#         memfile = rasterio.io.MemoryFile()
+#         memfiles.append(memfile)
+
+#         dataset = memfile.open(
+#             driver='GTiff',
+#             height=stack.shape[1],
+#             width=stack.shape[2],
+#             count=stack.shape[0],
+#             dtype=stack.dtype,
+#             transform=transform,
+#             crs=crs
+#         )
+
+#         for i in range(stack.shape[0]):
+#             dataset.write(stack[i], i+1)
+
+#         src_files_to_mosaic.append(dataset)
+
+#     mosaic, out_transform = merge(src_files_to_mosaic)
+#     shadow_buffer = mosaic[0]
+
+#     # garder uniquement les pixels illuminés
+#     illuminated = (shadow_buffer == 0).astype(np.uint8)
+
+#     ts_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+#     output_tif = os.path.join(
+#         cfg["output_path_SW"],
+#         f"{ts_str}_shadow_illuminated.tif"
+#     )
+
+#     with rasterio.open(
+#         output_tif,
+#         'w',
+#         driver='GTiff',
+#         height=illuminated.shape[0],
+#         width=illuminated.shape[1],
+#         count=1,
+#         dtype=illuminated.dtype,
+#         crs=crs,
+#         transform=out_transform,
+#         compress="LZW"
+#     ) as dst:
+#         dst.write(illuminated, 1)
+
+#     logging.info(f"Sonnenwinkel illuminated TIFF written: {output_tif}")
