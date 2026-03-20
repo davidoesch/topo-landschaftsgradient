@@ -465,7 +465,8 @@ class SonnenWinkel:
         logging.info("  Datentyp: float32")
         logging.info("  CRS: EPSG:2056 (LV95)")
 
-        self.__dom.close()
+    def close(self):
+        self.__dom._src.close()
 
 
 class InzidenWinkel:
@@ -592,6 +593,7 @@ class InzidenWinkel:
         logging.info(f"  Groesse: {grid.shape[0]} x {grid.shape[1]} Pixel")
         logging.info("  Datentyp: float32")
         logging.info("  CRS: EPSG:2056 (LV95)")
+
     def close(self):
         self.__dom._src.close()
 
