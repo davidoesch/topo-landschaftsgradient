@@ -14,6 +14,10 @@ from rasterio.merge import merge
 from iluina_module import HelperFunctions, InzidenWinkel, SonnenWinkel
 from multiprocessing import Pool
 import multiprocessing as mp
+import math
+import fiona
+from pyproj import CRS as PyprojCRS, Transformer
+
 
 
 LOGLEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -28,28 +32,28 @@ def parse_args():
     parser.add_argument(
         "--date",
         "-d",
-        default="20.06.2025",
+        default="25.12.2023",
         type=str,
         help="Date (DD.MM.YYYY), default: 13.12.2025",
     )
     parser.add_argument(
         "--time",
         "-t",
-        default="10:00:00",
+        default="10:34:41",
         type=str,
         help="Time UTC (HH:MM:SS), default: 10:00:00 (till 11:02:00 every 2 minutes)",
     )
     parser.add_argument(
         "--east",
         "-e",
-        default=2480000,
+        default=2480000,  # Niesen 2604000
         type=float,
         help="Easting in LV95 [m], default: 2480000 (start of CH grid)",
     )
     parser.add_argument(
         "--north",
         "-n",
-        default=1100000,
+        default=1060000,  # Niesen 1160000
         type=float,
         help="Northing in LV95 [m], default: 1060000 (start of CH grid)",
     )
@@ -73,6 +77,14 @@ def parse_args():
         choices=LOGLEVELS,
         default="INFO",
         help=f"Logelvel, possible values {LOGLEVELS}, default: INFO ",
+    )
+
+    parser.add_argument(
+    "--perimeter",
+    "-p",
+    default="65",
+    choices=["CH", "108", "22", "65", "8"],
+    help="Perimeter to process: 'CH' for full Switzerland, or orbit ID (108, 22, 65, 8)",
     )
 
     return vars(parser.parse_args())
@@ -147,6 +159,31 @@ def logparameter(args, cfg, coord_tuple):
     logging.info(f"{os.getpid()}" + "=" * 60)
 
 
+def load_perimeter_bbox(gpkg_path):
+
+    with fiona.open(gpkg_path, layer=0) as src:
+        bounds = src.bounds  # (minx, miny, maxx, maxy)
+        
+        # Handle both old fiona (dict CRS) and new fiona (CRS object)
+        crs_obj = src.crs
+        try:
+            # New fiona: CRS object — convert via pyproj
+            epsg = PyprojCRS.from_user_input(crs_obj).to_epsg()
+            src_epsg = str(epsg) if epsg else "4326"
+        except Exception:
+            # Old fiona: dict with "init" key
+            raw = crs_obj.get("init") if isinstance(crs_obj, dict) else ""
+            src_epsg = raw.lower().replace("epsg:", "").strip() if raw else "4326"
+
+    if src_epsg != "2056":
+        transformer = Transformer.from_crs(f"EPSG:{src_epsg}", "EPSG:2056", always_xy=True)
+        e_min, n_min = transformer.transform(bounds[0], bounds[1])
+        e_max, n_max = transformer.transform(bounds[2], bounds[3])
+    else:
+        e_min, n_min, e_max, n_max = bounds
+
+    logging.info(f"Perimeter bbox LV95: E={e_min:.0f}–{e_max:.0f}, N={n_min:.0f}–{n_max:.0f}")
+    return e_min, n_min, e_max, n_max
 def run(args, cfg, coord_tuple):
     logger = logging.getLogger()
     logger.info(f"Start processing data...{os.getpid()}")
@@ -265,18 +302,61 @@ def run(args, cfg, coord_tuple):
     return inc_stack, inc_transform_ref, inc_crs_value, ilu_stack, ilu_transform_ref, ilu_crs_value, 
 
 
-def orbit_parameter():
-    pass
+def calc_grid_for_perimeter(args, cfg, perimeter_key):
+    """
+    Build a list of tile origin coordinates (E, N) in LV95 that cover
+    either full Switzerland (perimeter_key == 'CH') or the bbox of the
+    chosen GPKG perimeter.
 
-def calc_grid(args, cfg) -> list[tuple[float, float]]:
-    n_e = 1    # numbe of cells in east direction: 18
-    n_n = 2      # number of cells in north direction: 12
-    grid_CH = []  # list containing coordinate tuples, e.g. [(2600000, 1200000), (2620000, 1220000)]
-    for e in range(n_e):
-        for n in range(n_n):
-            grid_CH.append( (args["east"] + e * args["grid_size"], args["north"] + n * args["grid_size"]) )
+    Tiles always align to multiples of grid_size so the CH grid is a
+    strict superset — partial-overlap tiles are included (clipping happens
+    at the output stage).
+    """
+    grid_size = args["grid_size"]
 
-    return grid_CH
+    if perimeter_key == "CH":
+        # Original full-Switzerland extents
+        e_origin = args["east"]   # 2480000
+        n_origin = args["north"]  # 1060000
+        n_e = 18
+        n_n = 12
+        grid = []
+        for e in range(n_e):
+            for n in range(n_n):
+                grid.append((e_origin + e * grid_size, n_origin + n * grid_size))
+        return grid
+
+    # GPKG perimeter path
+    perimeters = cfg["perimeters"]
+    gpkg_path = perimeters[perimeter_key] if perimeter_key in perimeters else None
+    if not gpkg_path or not os.path.isfile(gpkg_path):
+        raise FileNotFoundError(
+            f"GPKG for perimeter '{perimeter_key}' not found: {gpkg_path}"
+        )
+
+    e_min, n_min, e_max, n_max = load_perimeter_bbox(gpkg_path)
+
+    # Snap tile origins to the CH grid so tiles are always aligned
+    ch_e0 = args["east"]
+    ch_n0 = args["north"]
+
+    # First tile origin that starts at or before the perimeter bbox
+    start_e = ch_e0 + math.floor((e_min - ch_e0) / grid_size) * grid_size
+    start_n = ch_n0 + math.floor((n_min - ch_n0) / grid_size) * grid_size
+
+    grid = []
+    e = start_e
+    while e < e_max:
+        n = start_n
+        while n < n_max:
+            grid.append((e, n))
+            n += grid_size
+        e += grid_size
+
+    logging.info(
+        f"Perimeter '{perimeter_key}': {len(grid)} candidate tiles (before nodata filter)"
+    )
+    return grid
 
 
 def tile_contains_valid_data(dom_path, e, n, grid_size):
@@ -331,7 +411,7 @@ def merge_results(tile_results, args, cfg, output_path, label):
     doy_str = f"{dt_utc.timetuple().tm_yday:03d}"
     datum = dt_utc.strftime('%Y%m%d_%H%M%S')
 
-    output_tif = os.path.join(output_path, f"{label}_DOM_CH_DOY_{doy_str}_{datum}_1x1_test1.tif")
+    output_tif = os.path.join(output_path, f"{label}_DOM_CH_DOY_{doy_str}_{datum}_test.tif")
     if os.path.isfile(output_tif):
         os.remove(output_tif)
     with rasterio.open(
@@ -358,7 +438,7 @@ def merge_results(tile_results, args, cfg, output_path, label):
             dst.update_tags(i+1, TIMESTAMP_MILLISECONDS=str(ms_value))
 
 
-    logging.info(f"{os.getpid()} Merged Switzerland-wide TIFF written: {output_tif}")
+    logging.info(f"{os.getpid()} Merged {label} Switzerland-wide TIFF written: {output_tif}")
     
     # close
     for ds in src_files_to_mosaic:
@@ -385,7 +465,10 @@ if __name__ == "__main__":
                 # single process                
                 logging.info(f"origin coordinate East {__args['east']} and North {__args['north']}")
 
-                grid_ch = calc_grid(__args, __cfg)
+                perimeter_key = __args["perimeter"]
+                logging.info(f"Selected perimeter: {perimeter_key}")
+
+                grid_ch = calc_grid_for_perimeter(__args, __cfg, perimeter_key)
                 valid_tiles = [
                     coord_tuple for coord_tuple in grid_ch
                     if tile_contains_valid_data(
@@ -404,7 +487,7 @@ if __name__ == "__main__":
                 tasks = [(__args, __cfg, coord_tuple) for coord_tuple in valid_tiles]
                 
                 # multiprocess
-                n_proc = 1 #min(len(tasks), os.cpu_count() - 1)
+                n_proc = 5 #min(len(tasks), os.cpu_count() - 1)
                 logging.info(f"Starting processing of {len(tasks)} tiles with {n_proc} workers")
 
                 with ctx.Pool(processes=n_proc, initializer=setup_logging, initargs=(logging.INFO,)) as pool:
@@ -421,8 +504,8 @@ if __name__ == "__main__":
             
                 # as soon as all workers have done their job: join merge
                 # single process
-                merge_results(incidence_CH, __args, __cfg, __cfg["output_path_IG"], "incidence")
-                merge_results(illuminate_CH, __args, __cfg, __cfg["output_path_SW"], "illuminate")
+                merge_results(incidence_CH, __args, __cfg, __cfg["output_path_IG"], f"incidence_{perimeter_key}")
+                merge_results(illuminate_CH, __args, __cfg, __cfg["output_path_SW"], f"illuminate_{perimeter_key}")
 
                 # Listener beenden
                 log_queue.put_nowait(None)
@@ -438,56 +521,15 @@ if __name__ == "__main__":
     else:
         print("Not working as logfolder path not found")
 
-# def merge_results_sw(tile_results, args, cfg):
-#     logging.info("Merging Sonnenwinkel tiles...")
 
-#     src_files_to_mosaic = []
-#     memfiles = []
 
-#     for stack, transform, crs in tile_results:
-#         memfile = rasterio.io.MemoryFile()
-#         memfiles.append(memfile)
+# def calc_grid(args, cfg) -> list[tuple[float, float]]:
+#     n_e = 18    # numbe of cells in east direction: 18
+#     n_n = 12     # number of cells in north direction: 12
+#     grid_CH = []  # list containing coordinate tuples, e.g. [(2600000, 1200000), (2620000, 1220000)]
+#     for e in range(n_e):
+#         for n in range(n_n):
+#             grid_CH.append( (args["east"] + e * args["grid_size"], args["north"] + n * args["grid_size"]) )
 
-#         dataset = memfile.open(
-#             driver='GTiff',
-#             height=stack.shape[1],
-#             width=stack.shape[2],
-#             count=stack.shape[0],
-#             dtype=stack.dtype,
-#             transform=transform,
-#             crs=crs
-#         )
+#     return grid_CH
 
-#         for i in range(stack.shape[0]):
-#             dataset.write(stack[i], i+1)
-
-#         src_files_to_mosaic.append(dataset)
-
-#     mosaic, out_transform = merge(src_files_to_mosaic)
-#     shadow_buffer = mosaic[0]
-
-#     # garder uniquement les pixels illuminés
-#     illuminated = (shadow_buffer == 0).astype(np.uint8)
-
-#     ts_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
-#     output_tif = os.path.join(
-#         cfg["output_path_SW"],
-#         f"{ts_str}_shadow_illuminated.tif"
-#     )
-
-#     with rasterio.open(
-#         output_tif,
-#         'w',
-#         driver='GTiff',
-#         height=illuminated.shape[0],
-#         width=illuminated.shape[1],
-#         count=1,
-#         dtype=illuminated.dtype,
-#         crs=crs,
-#         transform=out_transform,
-#         compress="LZW"
-#     ) as dst:
-#         dst.write(illuminated, 1)
-
-#     logging.info(f"Sonnenwinkel illuminated TIFF written: {output_tif}")

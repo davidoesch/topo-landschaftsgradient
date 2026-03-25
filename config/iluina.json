@@ -1,12 +1,20 @@
 {
    "dom_path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\DOM\\DOM_full_CH_nodata.tif",
    "dem_path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\DOM\\DSM_10m_EPSG2056_CH_clipped_10km.tif",
-   "output_path_IG": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\incidence_grid\\Test_iluina",
-   "output_path_SW": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\shadow_grid",
+   "output_path_IG": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\incidence_grid\\Test_ina",
+   "output_path_SW": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\shadow_grid_curved\\Test_ilu",
    "logfolder_path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\log",
    "search_dist": 20000,
    "planets": {
       "path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\planets",
       "bsp_file": "de421.bsp"
+   },
+
+   "perimeters": {
+      "CH":  null,
+      "108": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\OrbitPerimeter\\swissboundary_buffer_5000m_108.gpkg",
+      "22":  "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\OrbitPerimeter\\swissboundary_buffer_5000m_22.gpkg",
+      "65":  "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\OrbitPerimeter\\swissboundary_buffer_5000m_65.gpkg",
+      "8":   "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\OrbitPerimeter\\swissboundary_buffer_5000m_8.gpkg"
    }
 }
