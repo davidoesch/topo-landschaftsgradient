@@ -10,6 +10,7 @@ import horayzon as hray
 from rasterio.windows import Window
 from rasterio.transform import from_bounds as transform_from_bounds
 from rasterio.windows import from_bounds as window_from_bounds
+from rasterio.transform import Affine
 from osgeo import gdal, osr
 from pyproj import CRS, Transformer
 from datetime import datetime, timezone
@@ -261,7 +262,7 @@ class SonnenWinkel:
         elevation_ortho = np.ascontiguousarray(self.__elevation[slice_in])
 
         # Compute ellipsoidal heights
-        self.__elevation += hray.geoid.undulation(self.__lon, self.__lat, geoid="EGM96")  # [m]
+        self.__elevation += hray.geoid.undulation(self.__lon, self.__lat, geoid="EGM96", path_to_aux_data=r"C:\LegacySW\topo-winhorayzon/")  # [m]
 
         # Compute ECEF coordinates
         x_ecef, y_ecef, z_ecef = hray.transform.lonlat2ecef(*np.meshgrid(self.__lon, self.__lat),
@@ -346,16 +347,62 @@ class SonnenWinkel:
 
         illuminated = (shadow_buffer == 0).astype(np.uint8)
 
-        lv95_transform = transform_from_bounds(
-            self.__domain_lv95["x_min"],
-            self.__domain_lv95["y_min"],
-            self.__domain_lv95["x_max"],
-            self.__domain_lv95["y_max"],
-            illuminated.shape[1],
-            illuminated.shape[0],
-        )
-        return illuminated, lv95_transform
+        # lv95_transform = transform_from_bounds(
+        #     self.__domain_lv95["x_min"],
+        #     self.__domain_lv95["y_min"],
+        #     self.__domain_lv95["x_max"],
+        #     self.__domain_lv95["y_max"],
+        #     illuminated.shape[1],
+        #     illuminated.shape[0],
+        # )
+        # return illuminated, lv95_transform
 
+        # reprojection WGS84 → LV95
+        lon_in  = self.__lon[slice_in[1]]
+        lat_in  = self.__lat[slice_in[0]]   # décroissant (N→S)
+        lon_res = float(lon_in[1]  - lon_in[0])
+        lat_res = float(lat_in[1]  - lat_in[0])
+        
+        gt_inner = (
+        float(lon_in[0]) - lon_res / 2,  lon_res, 0,
+        float(lat_in[0]) - lat_res / 2,  0,       lat_res,
+        )
+
+        # Data in memory : WGS84
+        NODATA_ILU = 255 
+        driver_mem = gdal.GetDriverByName("MEM")
+        ds_mem = driver_mem.Create("", illuminated.shape[1], illuminated.shape[0],
+                                    1, gdal.GDT_Byte)
+        ds_mem.SetGeoTransform(gt_inner)
+        ds_mem.SetProjection(self.__srs_wgs84.ExportToWkt())
+        ds_mem.GetRasterBand(1).WriteArray(illuminated)
+
+        # clip on wanted domain
+        ds_lv95 = gdal.Warp(
+        "", ds_mem,
+        format="MEM",
+        dstSRS="EPSG:2056",
+        outputBounds=(
+            self.__domain_lv95["x_min"], self.__domain_lv95["y_min"],
+            self.__domain_lv95["x_max"], self.__domain_lv95["y_max"],
+        ),
+        xRes=grid_step, yRes=grid_step,
+        resampleAlg=gdal.GRA_NearestNeighbour,
+        )
+        ds_mem = None
+
+        illuminated_lv95 = ds_lv95.GetRasterBand(1).ReadAsArray()
+        transform_mem = ds_lv95.GetGeoTransform()
+        ds_lv95 = None
+
+        transform_lv95 = Affine(
+            transform_mem[1], transform_mem[2], transform_mem[0],
+            transform_mem[4], transform_mem[5], transform_mem[3],
+        )
+        ds_lv95 = None
+
+        return illuminated_lv95, transform_lv95
+    
     def close(self):
         pass
 
