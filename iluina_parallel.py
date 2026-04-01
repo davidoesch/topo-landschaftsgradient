@@ -32,16 +32,16 @@ def parse_args():
     parser.add_argument(
         "--date",
         "-d",
-        default="25.12.2023",
+        default="17.06.2025",
         type=str,
-        help="Date (DD.MM.YYYY), default: 13.12.2025",
+        help="Date (DD.MM.YYYY), default: 25.12.2023/17.06.2025",
     )
     parser.add_argument(
         "--time",
         "-t",
-        default="10:34:41",
+        default="10:26:21",
         type=str,
-        help="Time UTC (HH:MM:SS), default: 10:00:00 (till 11:02:00 every 2 minutes)",
+        help="Time UTC (HH:MM:SS), default: 10:00:00 (till 11:02:00 every 2 minutes) or 10:34:41/10:26:21",
     )
     parser.add_argument(
         "--east",
@@ -78,12 +78,11 @@ def parse_args():
         default="INFO",
         help=f"Logelvel, possible values {LOGLEVELS}, default: INFO ",
     )
-
     parser.add_argument(
     "--perimeter",
     "-p",
-    default="65",
-    choices=["CH", "108", "22", "65", "8"],
+    default="108",
+    choices=["CH", "8", "108", "65", "22"],
     help="Perimeter to process: 'CH' for full Switzerland, or orbit ID (108, 22, 65, 8)",
     )
 
@@ -141,7 +140,7 @@ def logparameter(args, cfg, coord_tuple):
     north_lv95 = args["north"]
     grid_size = args["grid_size"]
     grid_step = args["grid_step"]
-    dom_path = cfg["dom_path"]
+    dom_path = cfg["dsm_path"]      # cfg["dom_path"] or cfg["dsm_path"]
 
     logging.info("=" * 60)
     logging.info(f"{os.getpid()} INZIDENZWINKEL-RASTER BERECHNUNG")
@@ -184,6 +183,8 @@ def load_perimeter_bbox(gpkg_path):
 
     logging.info(f"Perimeter bbox LV95: E={e_min:.0f}–{e_max:.0f}, N={n_min:.0f}–{n_max:.0f}")
     return e_min, n_min, e_max, n_max
+
+
 def run(args, cfg, coord_tuple):
     logger = logging.getLogger()
     logger.info(f"Start processing data...{os.getpid()}")
@@ -192,7 +193,7 @@ def run(args, cfg, coord_tuple):
     try:
         # initialize iw class with static config parameters
         iw = InzidenWinkel(
-            dom=cfg["dom_path"],
+            dom=cfg["dsm_path"],
             planets=cfg["planets"],
             output_path=cfg["output_path_IG"],
         )
@@ -201,7 +202,7 @@ def run(args, cfg, coord_tuple):
         inc_transform_ref = None
         inc_shape_ref = None
         # calculate incidence for every 10x10m cell of 20x20km tile
-        inc_tile, inc_transform = iw.calc_incidence_grid(
+        inc_tile, inc_transform, inc_nodata = iw.calc_incidence_grid(
             e_lv95=coord_tuple[0],
             n_lv95=coord_tuple[1],
             dateoi=args["date"],
@@ -242,7 +243,7 @@ def run(args, cfg, coord_tuple):
     
         # initialize sw class with static config parameters
         sw = SonnenWinkel(
-            dom=cfg["dom_path"],
+            dom=cfg["dsm_path"],
             planets=cfg["planets"],
             search_dist=cfg["search_dist"],
             output_path=cfg["output_path_SW"],
@@ -254,7 +255,7 @@ def run(args, cfg, coord_tuple):
 
         #for t_str in time_strings:
         # calculate illuminate for every 10x10m cell of 20x20km tile
-        ilu_tile, ilu_transform = sw.calc_illuminate_grid(
+        ilu_tile, ilu_transform, ilu_nodata = sw.calc_illuminate_grid(
             e_lv95=coord_tuple[0],
             n_lv95=coord_tuple[1],
             dateoi=args["date"],
@@ -299,7 +300,8 @@ def run(args, cfg, coord_tuple):
     iw.close()
     sw.close()
 
-    return inc_stack, inc_transform_ref, inc_crs_value, ilu_stack, ilu_transform_ref, ilu_crs_value, 
+    return inc_stack, inc_transform_ref, inc_crs_value, inc_nodata, \
+           ilu_stack, ilu_transform_ref, ilu_crs_value, ilu_nodata
 
 
 def calc_grid_for_perimeter(args, cfg, perimeter_key):
@@ -318,8 +320,8 @@ def calc_grid_for_perimeter(args, cfg, perimeter_key):
         # Original full-Switzerland extents
         e_origin = args["east"]   # 2480000
         n_origin = args["north"]  # 1060000
-        n_e = 18
-        n_n = 12
+        n_e = 18        # numbe of cells in east direction: 18
+        n_n = 12        # numbe of cells in north direction: 12
         grid = []
         for e in range(n_e):
             for n in range(n_n):
@@ -381,12 +383,12 @@ def tile_contains_valid_data(dom_path, e, n, grid_size):
 
 def merge_results(tile_results, args, cfg, output_path, label):
     logging.info(f"{os.getpid()} Merging all tiles into a single Switzerland-wide TIFF...")
-    
+    nodata = tile_results[0][3]
     src_files_to_mosaic = []
     memfiles = []
 
     #counter = 0
-    for stack, transform, crs in tile_results:
+    for stack, transform, crs, nodata in tile_results:
         # Create an in-memory rasterio dataset for merging
         memfile = rasterio.io.MemoryFile()
         memfiles.append(memfile)
@@ -396,22 +398,24 @@ def merge_results(tile_results, args, cfg, output_path, label):
             width=stack.shape[2],
             count=stack.shape[0],
             dtype=stack.dtype,
-           transform=transform,
-            crs=crs
+            transform=transform,
+            crs=crs,
+            nodata = nodata  # respectivement -9999 et 255
         ) 
         for i in range(stack.shape[0]):
              dataset.write(stack[i], i+1)
 
         src_files_to_mosaic.append(dataset)
 
-    mosaic, out_transform = merge(src_files_to_mosaic)
+    mosaic, out_transform = merge(src_files_to_mosaic, nodata = nodata)
 
     # Save final TIFF
     dt_utc = HelperFunctions.parse_datetime(args["date"], args["time"])
     doy_str = f"{dt_utc.timetuple().tm_yday:03d}"
     datum = dt_utc.strftime('%Y%m%d_%H%M%S')
+    _, _, last_crs, last_nodata = tile_results[-1]
 
-    output_tif = os.path.join(output_path, f"{label}_DOM_CH_DOY_{doy_str}_{datum}_test.tif")
+    output_tif = os.path.join(output_path, f"{label}_DSM_DOY_{doy_str}_{datum}.tif")
     if os.path.isfile(output_tif):
         os.remove(output_tif)
     with rasterio.open(
@@ -422,8 +426,9 @@ def merge_results(tile_results, args, cfg, output_path, label):
         width=mosaic.shape[2],
         count=mosaic.shape[0],
         dtype=mosaic.dtype,
-        crs=crs,
+        crs=last_crs,
         transform=out_transform,
+        nodata = last_nodata,
         tiled=True,
         compress="LZW"
     ) as dst:
@@ -472,7 +477,7 @@ if __name__ == "__main__":
                 valid_tiles = [
                     coord_tuple for coord_tuple in grid_ch
                     if tile_contains_valid_data(
-                        __cfg["dom_path"], 
+                        __cfg["dsm_path"], 
                         coord_tuple[0], 
                         coord_tuple[1],
                         __args["grid_size"])
@@ -487,15 +492,15 @@ if __name__ == "__main__":
                 tasks = [(__args, __cfg, coord_tuple) for coord_tuple in valid_tiles]
                 
                 # multiprocess
-                n_proc = 5 #min(len(tasks), os.cpu_count() - 1)
+                n_proc = 10 #min(len(tasks), os.cpu_count() - 1)
                 logging.info(f"Starting processing of {len(tasks)} tiles with {n_proc} workers")
 
                 with ctx.Pool(processes=n_proc, initializer=setup_logging, initargs=(logging.INFO,)) as pool:
                     try:
                         results = pool.starmap(run, tasks)
 
-                        incidence_CH = [(res[0], res[1], res[2]) for res in results]
-                        illuminate_CH = [(res[3], res[4], res[5]) for res in results]
+                        incidence_CH = [(res[0], res[1], res[2], res[3]) for res in results]
+                        illuminate_CH = [(res[4], res[5], res[6], res[7]) for res in results]
                     except KeyboardInterrupt:
                         logging.warning("KeyboardInterrupt received. Terminating workers...")
                         pool.terminate()
@@ -521,15 +526,4 @@ if __name__ == "__main__":
     else:
         print("Not working as logfolder path not found")
 
-
-
-# def calc_grid(args, cfg) -> list[tuple[float, float]]:
-#     n_e = 18    # numbe of cells in east direction: 18
-#     n_n = 12     # number of cells in north direction: 12
-#     grid_CH = []  # list containing coordinate tuples, e.g. [(2600000, 1200000), (2620000, 1220000)]
-#     for e in range(n_e):
-#         for n in range(n_n):
-#             grid_CH.append( (args["east"] + e * args["grid_size"], args["north"] + n * args["grid_size"]) )
-
-#     return grid_CH
 

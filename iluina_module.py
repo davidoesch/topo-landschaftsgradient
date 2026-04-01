@@ -377,6 +377,10 @@ class SonnenWinkel:
         ds_mem.SetProjection(self.__srs_wgs84.ExportToWkt())
         ds_mem.GetRasterBand(1).WriteArray(illuminated)
 
+        band_mem = ds_mem.GetRasterBand(1)
+        band_mem.SetNoDataValue(NODATA_ILU)   # ← déclarer nodata sur la source
+        band_mem.WriteArray(illuminated)
+
         # clip on wanted domain
         ds_lv95 = gdal.Warp(
         "", ds_mem,
@@ -388,6 +392,8 @@ class SonnenWinkel:
         ),
         xRes=grid_step, yRes=grid_step,
         resampleAlg=gdal.GRA_NearestNeighbour,
+        srcNodata=NODATA_ILU,             
+        dstNodata=NODATA_ILU,  # nodata = 255
         )
         ds_mem = None
 
@@ -401,7 +407,7 @@ class SonnenWinkel:
         )
         ds_lv95 = None
 
-        return illuminated_lv95, transform_lv95
+        return illuminated_lv95, transform_lv95, NODATA_ILU
     
     def close(self):
         pass
@@ -526,21 +532,28 @@ class InzidenWinkel:
 
         logging.info(f"{os.getpid()} Computing incidence angle")
         # incidence calculation
+        NODATA_INC = np.float32(-9999.0)
         theta = HelperFunctions.calculate_incidence_angle(slope, aspect, sun_elev, sun_az)
         grid = theta.astype(np.float32)
+        grid[np.isnan(grid)] = NODATA_INC  # nodata = -9999
         logging.info(f"{os.getpid()} Center{center_x}/{center_y}")
 
         # Build output transform based on actual read
-        out_transform = rasterio.windows.transform(window, src.transform)
+        #out_transform = rasterio.windows.transform(window, src.transform)
 
-        # out_transform = Affine(
-        #     self.__dom._dx, 0, xmin,
-        #     0, self.__dom._dy, ymax
-        # )
-        logging.info(f"{os.getpid()} Transform of dom ext: {out_transform}")
+        transform_out = Affine(
+            self.__dom._dx, 0, xmin,
+            0, self.__dom._dy, ymax
+        )
+
+        grid_out = np.full((num_points, num_points), NODATA_INC, dtype=np.float32)
+        rows = min(num_points, grid.shape[0])
+        cols = min(num_points, grid.shape[1])
+        grid_out[:rows, :cols] = grid[:rows, :cols]
+        logging.info(f"{os.getpid()} Transform of dom ext: {transform_out}")
         logging.info(f"{os.getpid()} Tile finished.")
 
-        return grid, out_transform
+        return grid_out, transform_out, NODATA_INC
 
     def __checkinput(self):
         if os.path.isdir(self.__output_path):
