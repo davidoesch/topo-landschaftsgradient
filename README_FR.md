@@ -141,6 +141,15 @@ cd ...dossier\topo-winhorayzon
 python.exe -c "import horayzon; print('horayzon OK')"
 ```
 
+## Fichiers
+
+| Fichier | Description |
+|---------|-------------|
+| `Iluina_module.py` | Classes `HelperFunctions`, `DOM_sw`/`SonneWinkel` (luminosité), `DOM_iw`/`InzidenWinkel` (angle d'incidence) |
+| `Iluina_parallel.py` | Script principal avec parseur d'arguments et multiprocessing |
+| `Iluina.json` | Configuration : chemins d'accès et paramètres |
+
+
 ## Utilisation
 
 ### Entrées
@@ -178,10 +187,3 @@ Multiprocessing : `n_pro = 8` workers par défaut.
 
 **Définir DOM ou DSM :** Dans `Iluina_parallel.py`, modifier le chemin aux lignes 143, 196, 246 et 480 (`cfg["dom_path"]` ou `cfg["dsm_path"]`).
 
-## Fichiers
-
-| Fichier | Description |
-|---------|-------------|
-| `Iluina_module.py` | Classes `HelperFunctions`, `DOM_sw`/`SonneWinkel` (luminosité), `DOM_iw`/`InzidenWinkel` (angle d'incidence) |
-| `Iluina_parallel.py` | Script principal avec parseur d'arguments et multiprocessing |
-| `Iluina.json` | Configuration : chemins d'accès et paramètres |
