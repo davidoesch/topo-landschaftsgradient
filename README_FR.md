@@ -51,11 +51,6 @@ Vérifier l'installation :
 python.exe -c "import horayzon; print('horayzon OK')"
 ```
 
-### Linux / Mac OS X
-
-Pour ces plateformes, le module de
-<https://github.com/ChristianSteger/HORAYZON> peut être utilisé directement.
-
 ## Utilisation
 
 ### Entrées
@@ -91,7 +86,7 @@ Pour un tile individuel (p. ex. Niesen) : `n_e = 1`, `n_n = 1`.
 
 Multiprocessing : `n_pro = 8` workers par défaut.
 
-**Basculer entre DOM et DSM :** Dans `Iluina_parallel.py`, modifier le chemin aux lignes 143, 196, 246 et 480 (`cfg["dom_path"]` ou `cfg["dsm_path"]`).
+**Définir DOM ou DSM :** Dans `Iluina_parallel.py`, modifier le chemin aux lignes 143, 196, 246 et 480 (`cfg["dom_path"]` ou `cfg["dsm_path"]`).
 
 ## Fichiers
 
