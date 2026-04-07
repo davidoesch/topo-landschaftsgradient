@@ -10,6 +10,9 @@ HORAYZON v1.2: an efficient and flexible ray-tracing algorithm to compute
 horizon and sky view factor, Geosci. Model Dev., 15, 6817–6840,
 <https://doi.org/10.5194/gmd-15-6817-2022>
 
+# Mise en place du wheel topo-winhorayzon dans Windows : 
+<https://confluence.swisstopo.ch/spaces/IGEB/pages/745505135/Landschaftsgradient>
+
 # Mise en place de l'environnement Python dans windows 
 ### Installation
 
