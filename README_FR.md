@@ -184,4 +184,3 @@ Pour un tile individuel (p. ex. Niesen) : `n_e = 1`, `n_n = 1`.
 Multiprocessing : `n_pro = 8` workers par défaut.
 
 **Définir DOM ou DSM :** Dans `Iluina_parallel.py`, modifier le chemin aux lignes 143, 196, 246 et 480 (`cfg["dom_path"]` ou `cfg["dsm_path"]`).
-
