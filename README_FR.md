@@ -3,14 +3,14 @@
 Outils pour le monitoring de la sécheresse
 
 ## Dépendances
-
+### Horayzon
 Cet outil s'appuie sur le dépôt <https://github.com/ChristianSteger/HORAYZON>
 Steger, C. R., Steger, B. and Schär, C. (2022):
 HORAYZON v1.2: an efficient and flexible ray-tracing algorithm to compute
 horizon and sky view factor, Geosci. Model Dev., 15, 6817–6840,
 <https://doi.org/10.5194/gmd-15-6817-2022>
 
-# Mise en place du wheel topo-winhorayzon dans Windows : 
+### Mise en place du wheel topo-winhorayzon dans Windows : 
 <https://confluence.swisstopo.ch/spaces/IGEB/pages/745505135/Landschaftsgradient>
 
 # Mise en place de l'environnement Python dans windows 
@@ -33,8 +33,8 @@ Les modules supplémentaires suivants sont nécessaires :
 - pvlib
 - horayzon
 
-Les paquets précompilés :
-- `winhorayzon-1.2.0-cp313-cp313-win_amd64.whl`
+Les paquets précompilés pour Windows avec Python 3.13:
+- topo-landschaftsgradient/whl/`winhorayzon-1.2.0-cp313-cp313-win_amd64.whl`
 
 ### Environnement Python d'utilisation 
 Dans un CMD
