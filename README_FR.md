@@ -10,7 +10,7 @@ HORAYZON v1.2: an efficient and flexible ray-tracing algorithm to compute
 horizon and sky view factor, Geosci. Model Dev., 15, 6817–6840,
 <https://doi.org/10.5194/gmd-15-6817-2022>
 
-# Mise en place de l'environnement Python
+# Mise en place de l'environnement Python dans windows 
 ### Installation
 
 Les modules supplémentaires suivants sont nécessaires :
@@ -30,99 +30,11 @@ Les modules supplémentaires suivants sont nécessaires :
 - pvlib
 - horayzon
 
-### Windows
-
 Les paquets précompilés :
-- `Miniconda3-latest-Windows-x86_64.exe`
 - `winhorayzon-1.2.0-cp313-cp313-win_amd64.whl`
 
-### 1. Environnement Python de compilation
-```bat
-_conda create --prefix ...dossier\make-topo-winhorayzon python=3.13
-_conda install -c conda-forge cmake --prefix ...dossier\make-topo-winhorayzon --yes
-```
-
-Vérifier cmake :
-```bat
-...dossier\make-topo-winhorayzon\Library\bin\cmake.exe --version
-```
-
-Installer les dépendances Python de compilation :
-```bat
-set PATH=...dossier\make-topo-winhorayzon;%PATH%
-cd ...dossier\make-topo-winhorayzon\scripts
-pip install cython numpy setuptools wheel
-```
-
----
-
-### 2. MinGW64
-
-1. Télécharger depuis <https://github.com/niXman/mingw-builds-binaries/releases>
-   - Fichier : `x86_64-15.2.0-release-win32-seh-msvcrt-rt_v12-rev0.7z` (ou version la plus récente)
-   - Important : choisir la variante `win32`, `seh`, `msvcrt`
-2. Extraire dans `...dossier\mingw64`
-
-Vérifier l'installation :
-```bat
-...dossier\mingw64\bin\gcc.exe --version
-...dossier\mingw64\bin\g++.exe --version
-```
-
----
-
-### 3. oneTBB
-```bat
-cmd à commencer dans ...\git
-git clone https://github.com/oneapi-src/oneTBB.git
-cd oneTBB
-set PATH=...dossier\mingw64\bin;%PATH%
-```
-
-#### Patch de `dynamic_link.cpp`
-
-Ouvrir `...\git\oneTBB\src\tbb\dynamic_link.cpp` et remplacer à la ligne ~562 :
-```cpp
-// AVANT
-return LOAD_LIBRARY_SAFE_CURRENT_DIRS;
-
-// APRÈS
-return LOAD_LIBRARY_SEARCH_USER_DIRS;
-```
-
-#### Compilation
-```bat
-mkdir build
-cd build
-...dossier\make-topo-winhorayzon\Library\bin\cmake.exe..-G "MinGW Makefiles"-DCMAKE_MAKE_PROGRAM=...dossier/mingw32-make.exe -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=...dossier/mingw64/bin/gcc.exe -DCMAKE_CXX_COMPILER=...dossier/mingw64/bin/g++.exe -DTBB_TEST=OFF -DCMAKE_INSTALL_PREFIX=.../git/tbb-mingw -DCMAKE_CXX_FLAGS="-D_WIN32_WINNT=0x0602" -DCMAKE_C_FLAGS="-D_WIN32_WINNT=0x0602"
-mingw32-make.exe -j4
-mingw32-make.exe install
-copy ...\git\tbb-mingw\lib\libtbb12.dll.a ...\git\tbb-mingw\lib\libtbb12.a
-```
-
----
-
-### 4. Bibliothèque d'import Embree
-```bat
-cd ...\git\topo-winhorayzon\embree\bin
-...dossier\mingw64\bin\gendef.exe embree4.dll
-...dossier\mingw64\bin\dlltool.exe -d embree4.def -l libembree4.a -D embree4.dll
-```
-
----
-
-### 5. Compilation du module et création du wheel
-```bat
-set PATH=...dossier\make-topo-winhorayzon;%PATH%
-set PATH=...dossier\mingw64\bin;%PATH%
-python setup_windows.py build_ext --inplace
-python build_wheel.py
-```
-
----
-
-### 6. Environnement Python d'utilisation
-Dans un nouveau CMD
+### Environnement Python d'utilisation 
+Dans un CMD
 ```bat
 _conda create --prefix ...dossier\topo-winhorayzon python=3.13 --yes
 cd ...dossier\topo-winhorayzon\scripts
@@ -172,8 +84,8 @@ Paramètres importants :
 |-----------|-------------|---------|
 | `--date` | Date | `25.12.2023` ou  `17.06.2025`|
 | `--time` | Heure | `10:34:41` ou `10:26:21`|
-| `--east` | Coordonnée de départ Est (LV95) | `2480000` (CH) |
-| `--north` | Coordonnée de départ Nord (LV95) | `1060000` (CH) |
+| `--east` | Coordonnée de départ Est n_e (LV95) | `2480000` (CH) |
+| `--north` | Coordonnée de départ Nord n_n (LV95) | `1060000` (CH) |
 | `--grid_size` | Taille de la grille [m] | `20000` |
 | `--grid_step` | Résolution [m] | `10` |
 | `--perimeter` | Périmètre de calcul | `CH`, `8`, `22`, `65`, `108` |
