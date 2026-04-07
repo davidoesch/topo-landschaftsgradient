@@ -10,8 +10,8 @@ HORAYZON v1.2: an efficient and flexible ray-tracing algorithm to compute
 horizon and sky view factor, Geosci. Model Dev., 15, 6817–6840,
 <https://doi.org/10.5194/gmd-15-6817-2022>
 
-
-## Installation
+# Mise en place de l'environnement Python
+### Installation
 
 Les modules supplémentaires suivants sont nécessaires :
 
@@ -36,12 +36,10 @@ Les paquets précompilés :
 - `Miniconda3-latest-Windows-x86_64.exe`
 - `winhorayzon-1.2.0-cp313-cp313-win_amd64.whl`
 
-## Mise en place de l'environnement Python
-
 ### 1. Environnement Python de compilation
 ```bat
-conda create --prefix ...dossier\make-topo-winhorayzon python=3.13
-conda install -c conda-forge cmake --prefix ...dossier\make-topo-winhorayzon --yes
+_conda create --prefix ...dossier\make-topo-winhorayzon python=3.13
+_conda install -c conda-forge cmake --prefix ...dossier\make-topo-winhorayzon --yes
 ```
 
 Vérifier cmake :
@@ -75,7 +73,7 @@ Vérifier l'installation :
 
 ### 3. oneTBB
 ```bat
-CMD à commencer dans ...\git
+cmd à commencer dans ...\git
 git clone https://github.com/oneapi-src/oneTBB.git
 cd oneTBB
 set PATH=...dossier\mingw64\bin;%PATH%
@@ -145,9 +143,9 @@ python.exe -c "import horayzon; print('horayzon OK')"
 
 | Fichier | Description |
 |---------|-------------|
-| `Iluina_module.py` | Classes `HelperFunctions`, `DOM_sw`/`SonneWinkel` (luminosité), `DOM_iw`/`InzidenWinkel` (angle d'incidence) |
-| `Iluina_parallel.py` | Script principal avec parseur d'arguments et multiprocessing |
-| `Iluina.json` | Configuration : chemins d'accès et paramètres |
+| `Iluina_module.py` | Classes `HelperFunctions`, `DOM_sw`+`SonneWinkel` (luminosité), `DOM_iw`+`InzidenWinkel` (angle d'incidence) |
+| `Iluina_parallel.py` | Script principal avec parseur d'arguments et multiprocessing dans le main |
+| `Iluina.json` | Configuration : chemins d'accès et search_distance |
 
 
 ## Utilisation
