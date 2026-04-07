@@ -50,7 +50,7 @@ pip install --index https://gisidx.github.io/gwi gdal
 
 Vérifier l'installation :
 ```bat
-cd ...dossier\topo-winhorayzon
+cd ...dossier\topo-landschaftsgradient
 python.exe -c "import horayzon; print('horayzon OK')"
 ```
 
