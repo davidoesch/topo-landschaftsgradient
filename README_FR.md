@@ -41,7 +41,7 @@ Dans un CMD
 ```bat
 _conda create --prefix ...dossier\topo-winhorayzon python=3.13 --yes
 cd ...dossier\topo-winhorayzon\scripts
-pip install "...\git\topo-winhorayzon\whl\winhorayzon-1.2.0-cp313-cp313-win_amd64.whl"
+pip install "...\topo-landschaftsgradient\whl\winhorayzon-1.2.0-cp313-cp313-win_amd64.whl"
 pip install rasterio xarray matplotlib shapely tqdm requests geographiclib scipy fiona scikit-image skyfield netcdf4
 pip install --index https://gisidx.github.io/gwi gdal
 ```
