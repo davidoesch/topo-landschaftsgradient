@@ -42,7 +42,12 @@ Dans un CMD
 _conda create --prefix ...dossier\topo-winhorayzon python=3.13 --yes
 cd ...dossier\topo-winhorayzon\scripts
 pip install "...\topo-landschaftsgradient\whl\winhorayzon-1.2.0-cp313-cp313-win_amd64.whl"
-pip install rasterio xarray matplotlib shapely tqdm requests geographiclib scipy fiona scikit-image skyfield netcdf4
+pip install rasterio xarray matplotlib shapely tqdm requests geographiclib scipy fiona scikit-image skyfield netCDF4 pyproj
+```
+
+For python 3.12 or 3.11 use the wheels from https://github.com/cgohlke/geospatial-wheels/releases
+
+```
 pip install --index https://gisidx.github.io/gwi gdal
 ```
 

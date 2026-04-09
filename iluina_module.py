@@ -110,13 +110,13 @@ class DOM_sw:
         self.__search_dist = search_dist
         self.__output_path = output_path
         self.__checkinput()
-        
+
     def __checkinput(self):
         if os.path.isfile(self.__dom):
             logging.debug(f"DOM {self.__dom} found")
         else:
             raise AttributeError(f"DOM {self.__dom} not found")
-        
+
     def reproject_dom(self, e_lv95, n_lv95, grid_size, grid_step, search_dist):
         domain_lv95 = {
             "x_min": e_lv95,
@@ -125,7 +125,7 @@ class DOM_sw:
             "y_max": n_lv95 + grid_size
         }
         ellps = "WGS84"
-        
+
         # Set up coordinate transformations
         srs_lv95 = osr.SpatialReference()
         srs_lv95.ImportFromEPSG(2056)
@@ -147,14 +147,14 @@ class DOM_sw:
                 "lat_min": min(c[1] for c in corners_wgs84),
                 "lat_max": max(c[1] for c in corners_wgs84)
         }
-        
+
         # Clamp domain to valid geographic range (important for horayzon)
         domain["lat_min"] = max(-89.9, domain["lat_min"])
         domain["lat_max"] = min(89.9, domain["lat_max"])
         domain["lon_min"] = max(-179.9, domain["lon_min"])
         domain["lon_max"] = min(179.9, domain["lon_max"])
         logging.warning(f"DOMAIN (inner): {domain}")
-        
+
         # Compute outer domain including search buffer in WGS84
         #domain_outer = hray.domain.curved_grid(domain, search_dist, ellps)
         try:
@@ -177,7 +177,7 @@ class DOM_sw:
                 "lat_max": domain["lat_max"] + buffer_deg,
             }
         logging.warning(f"DOMAIN OUTER: {domain_outer}")
-        
+
         # Target resolution in WGS84 degrees (~10 m at lat 47 N)
         dem_res_deg = grid_step / 111320.0  # 1 degree latitude ~ 111.32 km
 
@@ -211,14 +211,14 @@ class DOM_sw:
         logging.info("Ilu: Size of loaded DOM domain: " + str(elevation.shape))
         logging.info("Ilu: Elevation range of DOM: %.1f" % elevation.min()
             + " - %.1f" % elevation.max() + " m")
-        
+
         return elevation, lon, lat, domain, domain_lv95, srs_wgs84
 
 
 class SonnenWinkel:
-    
+
     gdal.UseExceptions()
-    
+
     def __init__(self, dom, planets, search_dist, output_path):
         self.__dom = DOM_sw(dom, search_dist, output_path)
         self.__planets = planets
@@ -226,14 +226,14 @@ class SonnenWinkel:
         self.__output_path = output_path
         self.__checkinput_dom()
         self.__checkinput()
-    
+
     def __checkinput_dom(self):
         bsp_path = os.path.join(self.__planets["path"], self.__planets["bsp_file"])
         if os.path.isfile(bsp_path):
             logging.debug(f".bsp file {bsp_path} found")
         else:
             raise AttributeError(f".bsp file {bsp_path} not found")
-        
+
     def __checkinput(self):
         if os.path.isdir(self.__output_path):
             logging.debug(f"{os.getpid()} Outpath {self.__output_path} found")
@@ -244,12 +244,12 @@ class SonnenWinkel:
         (
             self.__elevation,
             self.__lon,
-            self.__lat, 
-            self.__domain, 
+            self.__lat,
+            self.__domain,
             self.__domain_lv95,
             self.__srs_wgs84,
          ) = self.__dom.reproject_dom(e_lv95, n_lv95, grid_size, grid_step, self.__search_dist)
-        
+
         ellps = "WGS84"
         # Compute indices of inner domain
         slice_in = (slice(np.where(self.__lat >= self.__domain["lat_max"])[0][-1],
@@ -262,7 +262,7 @@ class SonnenWinkel:
         elevation_ortho = np.ascontiguousarray(self.__elevation[slice_in])
 
         # Compute ellipsoidal heights
-        self.__elevation += hray.geoid.undulation(self.__lon, self.__lat, geoid="EGM96", path_to_aux_data=r"C:\LegacySW\topo-winhorayzon/")  # [m]
+        self.__elevation += hray.geoid.undulation(self.__lon, self.__lat, geoid="EGM96", path_to_aux_data=r"D:\temp\github\topo-landschaftsgradient\EGM/")  # [m]
 
         # Compute ECEF coordinates
         x_ecef, y_ecef, z_ecef = hray.transform.lonlat2ecef(*np.meshgrid(self.__lon, self.__lat),
@@ -271,8 +271,8 @@ class SonnenWinkel:
 
         # Compute ENU coordinates
         trans_ecef2enu = hray.transform.TransformerEcef2enu(
-            lon_or=self.__lon[int(len(self.__lon) / 2)], 
-            lat_or=self.__lat[int(len(self.__lat) / 2)], 
+            lon_or=self.__lon[int(len(self.__lon) / 2)],
+            lat_or=self.__lat[int(len(self.__lat) / 2)],
             ellps=ellps)
         x_enu, y_enu, z_enu = hray.transform.ecef2enu(x_ecef, y_ecef, z_ecef,
                                                     trans_ecef2enu)
@@ -362,14 +362,14 @@ class SonnenWinkel:
         lat_in  = self.__lat[slice_in[0]]   # décroissant (N→S)
         lon_res = float(lon_in[1]  - lon_in[0])
         lat_res = float(lat_in[1]  - lat_in[0])
-        
+
         gt_inner = (
         float(lon_in[0]) - lon_res / 2,  lon_res, 0,
         float(lat_in[0]) - lat_res / 2,  0,       lat_res,
         )
 
         # Data in memory : WGS84
-        NODATA_ILU = 255 
+        NODATA_ILU = 255
         driver_mem = gdal.GetDriverByName("MEM")
         ds_mem = driver_mem.Create("", illuminated.shape[1], illuminated.shape[0],
                                     1, gdal.GDT_Byte)
@@ -392,7 +392,7 @@ class SonnenWinkel:
         ),
         xRes=grid_step, yRes=grid_step,
         resampleAlg=gdal.GRA_NearestNeighbour,
-        srcNodata=NODATA_ILU,             
+        srcNodata=NODATA_ILU,
         dstNodata=NODATA_ILU,  # nodata = 255
         )
         ds_mem = None
@@ -408,7 +408,7 @@ class SonnenWinkel:
         ds_lv95 = None
 
         return illuminated_lv95, transform_lv95, NODATA_ILU
-    
+
     def close(self):
         pass
 
@@ -428,7 +428,7 @@ class DOM_iw:
     def __loadingDOM(self):
         logging.info(f"{os.getpid()} Lade DOM-Daten...")
 
-        # keep DOM open 
+        # keep DOM open
         self._src = rasterio.open(self.__dom)
         self._src_path = self.__dom
 
@@ -444,7 +444,7 @@ class DOM_iw:
         self._y0 = self._transform.f + self._dy / 2
 
         logging.info(f"{os.getpid()} Loaded DOM metadata: {self._width} × {self._height} px")
-        
+
     def close(self):
         if self._src:
             self._src.close()
@@ -485,7 +485,7 @@ class InzidenWinkel:
         window = window.round_offsets().round_lengths()
 
         elev_tile = src.read(1, window=window)
-        height, width = elev_tile.shape 
+        height, width = elev_tile.shape
         nodata = self.__dom._nodata
 
         if nodata is not None:
@@ -519,7 +519,7 @@ class InzidenWinkel:
         slope[:rows, :cols] = slope_tile[:rows, :cols]
         aspect[:rows, :cols] = aspect_tile[:rows, :cols]
 
-        # Sun position once per tile 
+        # Sun position once per tile
         center_x = e_lv95 + grid_size / 2
         center_y = n_lv95 + grid_size / 2
 

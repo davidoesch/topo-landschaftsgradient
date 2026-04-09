@@ -46,14 +46,14 @@ def parse_args():
     parser.add_argument(
         "--east",
         "-e",
-        default=2480000,  # Niesen 2604000
+        default=2604000,  # Niesen 2604000 #default 2480000
         type=float,
         help="Easting in LV95 [m], default: 2480000 (start of CH grid)",
     )
     parser.add_argument(
         "--north",
         "-n",
-        default=1060000,  # Niesen 1160000
+        default=1160000 ,  # Niesen 1160000 #default 1060000
         type=float,
         help="Northing in LV95 [m], default: 1060000 (start of CH grid)",
     )
@@ -81,7 +81,7 @@ def parse_args():
     parser.add_argument(
     "--perimeter",
     "-p",
-    default="108",
+    default="CH",
     choices=["CH", "8", "108", "65", "22"],
     help="Perimeter to process: 'CH' for full Switzerland, or orbit ID (108, 22, 65, 8)",
     )
@@ -162,7 +162,7 @@ def load_perimeter_bbox(gpkg_path):
 
     with fiona.open(gpkg_path, layer=0) as src:
         bounds = src.bounds  # (minx, miny, maxx, maxy)
-        
+
         # Handle both old fiona (dict CRS) and new fiona (CRS object)
         crs_obj = src.crs
         try:
@@ -206,7 +206,7 @@ def run(args, cfg, coord_tuple):
             e_lv95=coord_tuple[0],
             n_lv95=coord_tuple[1],
             dateoi=args["date"],
-            timeoi=args["time"], 
+            timeoi=args["time"],
             grid_size=args["grid_size"],
             grid_step=args["grid_step"],
         )
@@ -226,7 +226,7 @@ def run(args, cfg, coord_tuple):
 
         if not inc_bands:
             raise RuntimeError("No bands were created for this tile")
-        
+
         inc_stack = np.stack(inc_bands, axis=0)  # [time, H, W]
         inc_crs_value = getattr(iw, "crs", None) or "EPSG:2056"
 
@@ -240,7 +240,7 @@ def run(args, cfg, coord_tuple):
             logging.info(f"  {os.getpid()} Mittelwert: {np.mean(inc_valid_values):.2f} Grad")
         else:
             logging.warning(f"{os.getpid()} Inc: Keine gueltigen Werte berechnet!")
-    
+
         # initialize sw class with static config parameters
         sw = SonnenWinkel(
             dom=cfg["dsm_path"],
@@ -248,7 +248,7 @@ def run(args, cfg, coord_tuple):
             search_dist=cfg["search_dist"],
             output_path=cfg["output_path_SW"],
         )
-        
+
         ilu_bands = []
         ilu_transform_ref = None
         ilu_shape_ref = None
@@ -279,10 +279,10 @@ def run(args, cfg, coord_tuple):
 
         if not ilu_bands:
             raise RuntimeError("No bands were created for this tile")
-        
+
         ilu_stack = np.stack(ilu_bands, axis=0)  # [time, H, W]
         ilu_crs_value = getattr(sw, "crs", None) or "EPSG:2056"
-        
+
         # Log statistics
         total_pixels = ilu_tile.size
         illuminated_pixels = int(np.sum(ilu_tile == 1))  # ← count the 1s
@@ -320,8 +320,8 @@ def calc_grid_for_perimeter(args, cfg, perimeter_key):
         # Original full-Switzerland extents
         e_origin = args["east"]   # 2480000
         n_origin = args["north"]  # 1060000
-        n_e = 18        # numbe of cells in east direction: 18
-        n_n = 12        # numbe of cells in north direction: 12
+        n_e = 1        # numbe of cells in east direction: 18
+        n_n = 1       # numbe of cells in north direction: 12
         grid = []
         for e in range(n_e):
             for n in range(n_n):
@@ -401,7 +401,7 @@ def merge_results(tile_results, args, cfg, output_path, label):
             transform=transform,
             crs=crs,
             nodata = nodata  # respectivement -9999 et 255
-        ) 
+        )
         for i in range(stack.shape[0]):
              dataset.write(stack[i], i+1)
 
@@ -444,7 +444,7 @@ def merge_results(tile_results, args, cfg, output_path, label):
 
 
     logging.info(f"{os.getpid()} Merged {label} Switzerland-wide TIFF written: {output_tif}")
-    
+
     # close
     for ds in src_files_to_mosaic:
          ds.close()
@@ -467,7 +467,7 @@ if __name__ == "__main__":
                 setup_logging(level=loglvl, logfolder=Path(__cfg["logfolder_path"]))
 
                 # generate list with all start_e and start_n
-                # single process                
+                # single process
                 logging.info(f"origin coordinate East {__args['east']} and North {__args['north']}")
 
                 perimeter_key = __args["perimeter"]
@@ -477,8 +477,8 @@ if __name__ == "__main__":
                 valid_tiles = [
                     coord_tuple for coord_tuple in grid_ch
                     if tile_contains_valid_data(
-                        __cfg["dsm_path"], 
-                        coord_tuple[0], 
+                        __cfg["dsm_path"],
+                        coord_tuple[0],
                         coord_tuple[1],
                         __args["grid_size"])
                 ]
@@ -490,7 +490,7 @@ if __name__ == "__main__":
                 logging.info(f"Number of nodata tiles: {nodata_tiles}")
 
                 tasks = [(__args, __cfg, coord_tuple) for coord_tuple in valid_tiles]
-                
+
                 # multiprocess
                 n_proc = 10 #min(len(tasks), os.cpu_count() - 1)
                 logging.info(f"Starting processing of {len(tasks)} tiles with {n_proc} workers")
@@ -506,7 +506,7 @@ if __name__ == "__main__":
                         pool.terminate()
                         pool.join()
                         raise
-            
+
                 # as soon as all workers have done their job: join merge
                 # single process
                 merge_results(incidence_CH, __args, __cfg, __cfg["output_path_IG"], f"incidence_{perimeter_key}")
