@@ -1,10 +1,10 @@
 {
    "dom_path": "\\\\v0t0020a.adr.admin.ch\\iprod\\gdwh-temp\\Landschaftsgradient\\DOM\\DOM_full_CH_nodata.tif",
-   "dsm_path": "D:\\temp\\github\\topo-satromo-v2\\local_assets\\DSM_10m_EPSG2056_CH_clipped_10km.tif",
+   "dsm_path": "D:\\temp\\github\\topo-satromo-v2\\local_assets\\DSM_full_CH_nodata.tif",
    "output_path_IG": "D:\\temp\\github\\topo-landschaftsgradient\\local_assets\\incidence_CH",
    "output_path_SW": "D:\\temp\\github\\topo-landschaftsgradient\\local_assets\\illuminated_CH",
    "logfolder_path": "D:\\temp\\github\\topo-landschaftsgradient\\local_assets\\log",
-   "search_dist": 20000,
+   "search_dist": 10000,
    "planets": {
       "path": "D:\\temp\\github\\topo-landschaftsgradient\\local_assets\\planets",
       "bsp_file": "de421.bsp"

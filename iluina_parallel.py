@@ -320,8 +320,8 @@ def calc_grid_for_perimeter(args, cfg, perimeter_key):
         # Original full-Switzerland extents
         e_origin = args["east"]   # 2480000
         n_origin = args["north"]  # 1060000
-        n_e = 1        # numbe of cells in east direction: 18
-        n_n = 1       # numbe of cells in north direction: 12
+        n_e = 18        # numbe of cells in east direction: 18
+        n_n = 12       # numbe of cells in north direction: 12
         grid = []
         for e in range(n_e):
             for n in range(n_n):
@@ -492,7 +492,7 @@ if __name__ == "__main__":
                 tasks = [(__args, __cfg, coord_tuple) for coord_tuple in valid_tiles]
 
                 # multiprocess
-                n_proc = 10 #min(len(tasks), os.cpu_count() - 1)
+                n_proc = 5 #min(len(tasks), os.cpu_count() - 1)
                 logging.info(f"Starting processing of {len(tasks)} tiles with {n_proc} workers")
 
                 with ctx.Pool(processes=n_proc, initializer=setup_logging, initargs=(logging.INFO,)) as pool:
