@@ -16,6 +16,7 @@ from pyproj import CRS, Transformer
 from datetime import datetime, timezone
 from skyfield.api import load, wgs84
 import time
+import math
 
 
 
@@ -118,6 +119,8 @@ class DOM_sw:
             raise AttributeError(f"DOM {self.__dom} not found")
 
     def reproject_dom(self, e_lv95, n_lv95, grid_size, grid_step, search_dist):
+
+
         domain_lv95 = {
             "x_min": e_lv95,
             "x_max": e_lv95 + grid_size,
@@ -126,7 +129,7 @@ class DOM_sw:
         }
         ellps = "WGS84"
 
-        # Set up coordinate transformations
+        # Koordinatentransformation LV95 -> WGS84
         srs_lv95 = osr.SpatialReference()
         srs_lv95.ImportFromEPSG(2056)
         srs_lv95.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
@@ -135,28 +138,49 @@ class DOM_sw:
         srs_wgs84.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
         ct = osr.CoordinateTransformation(srs_lv95, srs_wgs84)
 
-        # Convert inner domain corners LV95 -> WGS84 to get domain in degrees
-        corners_lv95 = [(domain_lv95["x_min"], domain_lv95["y_min"]),
-                        (domain_lv95["x_max"], domain_lv95["y_min"]),
-                        (domain_lv95["x_max"], domain_lv95["y_max"]),
-                        (domain_lv95["x_min"], domain_lv95["y_max"])]
+        # Inneres Domain in WGS84
+        corners_lv95 = [
+            (domain_lv95["x_min"], domain_lv95["y_min"]),
+            (domain_lv95["x_max"], domain_lv95["y_min"]),
+            (domain_lv95["x_max"], domain_lv95["y_max"]),
+            (domain_lv95["x_min"], domain_lv95["y_max"])
+        ]
         corners_wgs84 = [ct.TransformPoint(px, py) for px, py in corners_lv95]
         domain = {
-                "lon_min": min(c[0] for c in corners_wgs84),
-                "lon_max": max(c[0] for c in corners_wgs84),
-                "lat_min": min(c[1] for c in corners_wgs84),
-                "lat_max": max(c[1] for c in corners_wgs84)
+            "lon_min": min(c[0] for c in corners_wgs84),
+            "lon_max": max(c[0] for c in corners_wgs84),
+            "lat_min": min(c[1] for c in corners_wgs84),
+            "lat_max": max(c[1] for c in corners_wgs84)
         }
 
-        # Clamp domain to valid geographic range (important for horayzon)
+        # Gültige geografische Grenzen sicherstellen
         domain["lat_min"] = max(-89.9, domain["lat_min"])
         domain["lat_max"] = min(89.9, domain["lat_max"])
         domain["lon_min"] = max(-179.9, domain["lon_min"])
         domain["lon_max"] = min(179.9, domain["lon_max"])
         logging.warning(f"DOMAIN (inner): {domain}")
 
-        # Compute outer domain including search buffer in WGS84
-        #domain_outer = hray.domain.curved_grid(domain, search_dist, ellps)
+        # Breitengradkorrektur für E-W-Ausdehnung
+        lat_center = (domain["lat_min"] + domain["lat_max"]) / 2
+        cos_lat = math.cos(math.radians(lat_center))
+
+        # Korrekte Buffer-Werte in Grad (getrennt fuer N-S und E-W)
+        buffer_lat_deg = search_dist / 111320.0
+        buffer_lon_deg = search_dist / (111320.0 * cos_lat)
+
+        # Korrekte DEM-Aufloesung in Grad (getrennt fuer N-S und E-W)
+        dem_res_lat_deg = grid_step / 111320.0
+        dem_res_lon_deg = grid_step / (111320.0 * cos_lat)
+
+        logging.info(
+            f"lat_center={lat_center:.3f}°, cos_lat={cos_lat:.4f} | "
+            f"buffer_lat={buffer_lat_deg*111320:.0f}m, "
+            f"buffer_lon={buffer_lon_deg*111320.0*cos_lat:.0f}m | "
+            f"dem_res_ns={dem_res_lat_deg*111320:.1f}m, "
+            f"dem_res_ew={dem_res_lon_deg*111320.0*cos_lat:.1f}m"
+        )
+
+        # Aeusseres Domain mit HORAYZON berechnen, Fallback mit korrektem Buffer
         try:
             domain_outer = hray.domain.curved_grid(domain, search_dist, ellps)
 
@@ -166,22 +190,17 @@ class DOM_sw:
                 raise ValueError("curved_grid produced unrealistic domain")
 
         except Exception:
-            logging.warning(f"{os.getpid()} curved_grid failed → using SAFE fallback")
-
-            buffer_deg = search_dist / 111320.0  # meters → degrees
-
+            logging.warning(f"{os.getpid()} curved_grid failed -> verwende korrigierten Fallback-Buffer")
             domain_outer = {
-                "lon_min": domain["lon_min"] - buffer_deg,
-                "lon_max": domain["lon_max"] + buffer_deg,
-                "lat_min": domain["lat_min"] - buffer_deg,
-                "lat_max": domain["lat_max"] + buffer_deg,
+                "lon_min": domain["lon_min"] - buffer_lon_deg,
+                "lon_max": domain["lon_max"] + buffer_lon_deg,
+                "lat_min": domain["lat_min"] - buffer_lat_deg,
+                "lat_max": domain["lat_max"] + buffer_lat_deg,
             }
+
         logging.warning(f"DOMAIN OUTER: {domain_outer}")
 
-        # Target resolution in WGS84 degrees (~10 m at lat 47 N)
-        dem_res_deg = grid_step / 111320.0  # 1 degree latitude ~ 111.32 km
-
-        # Warp DOM from LV95 to WGS84 at outer domain extent (in memory)
+        # DSM in WGS84 umprojizieren (aeusseres Domain, korrekte Aufloesung)
         ds_src = gdal.Open(self.__dom)
         nodata_src = ds_src.GetRasterBand(1).GetNoDataValue()
         ds_src = None
@@ -190,13 +209,17 @@ class DOM_sw:
             "", self.__dom,
             format="MEM",
             dstSRS="EPSG:4326",
-            outputBounds=(domain_outer["lon_min"], domain_outer["lat_min"],
-                        domain_outer["lon_max"], domain_outer["lat_max"]),
-            xRes=dem_res_deg, yRes=dem_res_deg,
+            outputBounds=(
+                domain_outer["lon_min"], domain_outer["lat_min"],
+                domain_outer["lon_max"], domain_outer["lat_max"]
+            ),
+            xRes=dem_res_lon_deg,
+            yRes=dem_res_lat_deg,
             resampleAlg=gdal.GRA_Bilinear,
             srcNodata=nodata_src,
             dstNodata=-9999.0,
         )
+
         elevation = ds_warp.GetRasterBand(1).ReadAsArray().astype(np.float32)
         gt = ds_warp.GetGeoTransform()
         nx, ny = ds_warp.RasterXSize, ds_warp.RasterYSize
@@ -204,13 +227,14 @@ class DOM_sw:
 
         lon = np.linspace(gt[0] + gt[1] / 2.0, gt[0] + gt[1] * (nx - 0.5), nx)
         lat = np.linspace(gt[3] + gt[5] / 2.0, gt[3] + gt[5] * (ny - 0.5), ny)
-        # lat is decreasing (north to south, gt[5] < 0)
 
         elevation[elevation == -9999.0] = 0.0
-        logging.info("Ilu: DOM reprojected to WGS84")
-        logging.info("Ilu: Size of loaded DOM domain: " + str(elevation.shape))
-        logging.info("Ilu: Elevation range of DOM: %.1f" % elevation.min()
-            + " - %.1f" % elevation.max() + " m")
+        logging.info("Ilu: DSM nach WGS84 umprojiziert")
+        logging.info("Ilu: Groesse des geladenen DSM-Bereichs: " + str(elevation.shape))
+        logging.info(
+            "Ilu: Hoehenbereich des DSM: %.1f" % elevation.min()
+            + " - %.1f" % elevation.max() + " m"
+        )
 
         return elevation, lon, lat, domain, domain_lv95, srs_wgs84
 
