@@ -32,28 +32,28 @@ def parse_args():
     parser.add_argument(
         "--date",
         "-d",
-        default="17.06.2025",
+        default="25.12.2023",
         type=str,
         help="Date (DD.MM.YYYY), default: 25.12.2023/17.06.2025",
     )
     parser.add_argument(
         "--time",
         "-t",
-        default="10:26:21",
+        default="10:34:41",
         type=str,
         help="Time UTC (HH:MM:SS), default: 10:00:00 (till 11:02:00 every 2 minutes) or 10:34:41/10:26:21",
     )
     parser.add_argument(
         "--east",
         "-e",
-        default=2604000,  # Niesen 2604000 #default 2480000
+        default=2480000,  # Niesen 2604000 #default 2480000
         type=float,
         help="Easting in LV95 [m], default: 2480000 (start of CH grid)",
     )
     parser.add_argument(
         "--north",
         "-n",
-        default=1160000 ,  # Niesen 1160000 #default 1060000
+        default=1060000 ,  # Niesen 1160000 #default 1060000
         type=float,
         help="Northing in LV95 [m], default: 1060000 (start of CH grid)",
     )
@@ -81,7 +81,7 @@ def parse_args():
     parser.add_argument(
     "--perimeter",
     "-p",
-    default="CH",
+    default="108",
     choices=["CH", "8", "108", "65", "22"],
     help="Perimeter to process: 'CH' for full Switzerland, or orbit ID (108, 22, 65, 8)",
     )
