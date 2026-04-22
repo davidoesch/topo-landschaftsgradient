@@ -32,14 +32,14 @@ def parse_args():
     parser.add_argument(
         "--date",
         "-d",
-        default="25.12.2023",
+        default="17.06.2023",
         type=str,
         help="Date (DD.MM.YYYY), default: 25.12.2023/17.06.2025",
     )
     parser.add_argument(
         "--time",
         "-t",
-        default="10:35:41",
+        default="10:26:21",
         type=str,
         help="Time UTC (HH:MM:SS), default: 10:00:00 (till 11:02:00 every 2 minutes) or 10:34:41/10:26:21",
     )
