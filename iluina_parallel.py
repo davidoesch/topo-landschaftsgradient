@@ -39,21 +39,21 @@ def parse_args():
     parser.add_argument(
         "--time",
         "-t",
-        default="10:34:41",
+        default="10:35:41",
         type=str,
         help="Time UTC (HH:MM:SS), default: 10:00:00 (till 11:02:00 every 2 minutes) or 10:34:41/10:26:21",
     )
     parser.add_argument(
         "--east",
         "-e",
-        default=2480000,  # Niesen 2604000 #default 2480000
+        default=2604000,  # Niesen 2604000 #default 2480000
         type=float,
         help="Easting in LV95 [m], default: 2480000 (start of CH grid)",
     )
     parser.add_argument(
         "--north",
         "-n",
-        default=1060000 ,  # Niesen 1160000 #default 1060000
+        default=1160000 ,  # Niesen 1160000 #default 1060000
         type=float,
         help="Northing in LV95 [m], default: 1060000 (start of CH grid)",
     )
@@ -81,7 +81,7 @@ def parse_args():
     parser.add_argument(
     "--perimeter",
     "-p",
-    default="108",
+    default="CH",
     choices=["CH", "8", "108", "65", "22"],
     help="Perimeter to process: 'CH' for full Switzerland, or orbit ID (108, 22, 65, 8)",
     )
@@ -320,8 +320,8 @@ def calc_grid_for_perimeter(args, cfg, perimeter_key):
         # Original full-Switzerland extents
         e_origin = args["east"]   # 2480000
         n_origin = args["north"]  # 1060000
-        n_e = 18        # numbe of cells in east direction: 18
-        n_n = 12       # numbe of cells in north direction: 12
+        n_e = 1        # numbe of cells in east direction: 18
+        n_n = 1       # numbe of cells in north direction: 12
         grid = []
         for e in range(n_e):
             for n in range(n_n):

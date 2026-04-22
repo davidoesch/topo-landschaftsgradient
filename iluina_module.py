@@ -104,6 +104,66 @@ class HelperFunctions:
 
         return theta
 
+def manual_curved_grid(domain, search_dist, ellps="WGS84"):
+    """
+    Ersatz fuer hray.domain.curved_grid fuer HORAYZON 1.2.
+    Berechnet das aeussere Domain unter Beruecksichtigung der Erdkruemmung.
+
+    domain:      dict mit lon_min, lon_max, lat_min, lat_max (WGS84 Grad)
+    search_dist: Suchradius in Metern
+    ellps:       Ellipsoid (nur WGS84 implementiert)
+
+    Gibt dict mit lon_min, lon_max, lat_min, lat_max zurueck.
+    """
+    import math
+
+    # Ellipsoid-Parameter WGS84
+    a = 6378137.0          # grosse Halbachse [m]
+    f = 1 / 298.257223563  # Abplattung
+    b = a * (1 - f)        # kleine Halbachse [m]
+
+    lat_center = (domain["lat_min"] + domain["lat_max"]) / 2.0
+    lon_center = (domain["lon_min"] + domain["lon_max"]) / 2.0
+    lat_rad    = math.radians(lat_center)
+
+    # Kruemmungsradien am Breitengrad
+    # Meridian-Kruemmungsradius (N-S)
+    e2    = 1 - (b / a) ** 2
+    N_rad = a / math.sqrt(1 - e2 * math.sin(lat_rad) ** 2)
+    M_rad = a * (1 - e2) / (1 - e2 * math.sin(lat_rad) ** 2) ** 1.5
+
+    # Winkel in Grad fuer search_dist auf der gekruemmten Erde
+    # N-S: Meridianradius
+    delta_lat_deg = math.degrees(search_dist / M_rad)
+    # E-W: Querkruemmungsradius * cos(lat)
+    delta_lon_deg = math.degrees(search_dist / (N_rad * math.cos(lat_rad)))
+
+    # Kruemmungskorrektur: bei langen Distanzen waechst der benoetigte
+    # Buffer durch die Erdkruemmung. Korrektur nach HORAYZON-Methodik:
+    # sagitta = d^2 / (2*R) -> zusaetzlicher vertikaler Versatz
+    # Dieser erfordert einen lateralen Zusatzbuffer von sagitta/tan(min_sun_elev)
+    # Konservative Schaetzung: 3m zusaetzlicher Buffer pro 1000m search_dist
+    curvature_buffer_m = (search_dist / 1000.0) ** 2 * 0.5  # [m]
+    curvature_lat_deg  = math.degrees(curvature_buffer_m / M_rad)
+    curvature_lon_deg  = math.degrees(curvature_buffer_m / (N_rad * math.cos(lat_rad)))
+
+    domain_outer = {
+        "lon_min": domain["lon_min"] - delta_lon_deg - curvature_lon_deg,
+        "lon_max": domain["lon_max"] + delta_lon_deg + curvature_lon_deg,
+        "lat_min": domain["lat_min"] - delta_lat_deg - curvature_lat_deg,
+        "lat_max": domain["lat_max"] + delta_lat_deg + curvature_lat_deg,
+    }
+
+    # Plausibilitaetspruefung
+    lon_span = domain_outer["lon_max"] - domain_outer["lon_min"]
+    lat_span = domain_outer["lat_max"] - domain_outer["lat_min"]
+    if lon_span > 5 or lat_span > 5:
+        raise ValueError(
+            f"manual_curved_grid: unrealistisches Domain "
+            f"(lon_span={lon_span:.2f}, lat_span={lat_span:.2f})"
+        )
+
+    return domain_outer
 
 class DOM_sw:
     def __init__(self, dom, search_dist, output_path):
@@ -182,15 +242,15 @@ class DOM_sw:
 
         # Aeusseres Domain mit HORAYZON berechnen, Fallback mit korrektem Buffer
         try:
-            domain_outer = hray.domain.curved_grid(domain, search_dist, ellps)
+            domain_outer = manual_curved_grid(domain, search_dist, ellps)
+            logging.info(
+                f"{os.getpid()} manual_curved_grid: "
+                f"lon {domain_outer['lon_min']:.4f} - {domain_outer['lon_max']:.4f}, "
+                f"lat {domain_outer['lat_min']:.4f} - {domain_outer['lat_max']:.4f}"
+            )
 
-            lon_span = domain_outer["lon_max"] - domain_outer["lon_min"]
-            lat_span = domain_outer["lat_max"] - domain_outer["lat_min"]
-            if lon_span > 1 or lat_span > 1:
-                raise ValueError("curved_grid produced unrealistic domain")
-
-        except Exception:
-            logging.warning(f"{os.getpid()} curved_grid failed -> verwende korrigierten Fallback-Buffer")
+        except Exception as ex:
+            logging.warning(f"{os.getpid()} manual_curved_grid failed: {ex} -> Fallback")
             domain_outer = {
                 "lon_min": domain["lon_min"] - buffer_lon_deg,
                 "lon_max": domain["lon_max"] + buffer_lon_deg,
@@ -294,10 +354,22 @@ class SonnenWinkel:
         dem_dim_0, dem_dim_1 = self.__elevation.shape
 
         # Compute ENU coordinates
+        # Mitte des inneren Domains berechnen
+        lon_inner_center = (self.__domain["lon_min"] + self.__domain["lon_max"]) / 2.0
+        lat_inner_center = (self.__domain["lat_min"] + self.__domain["lat_max"]) / 2.0
+
+        logging.info(
+            f"{os.getpid()} ENU Ursprung: "
+            f"lon={lon_inner_center:.6f}, lat={lat_inner_center:.6f}  "
+            f"(vorher: lon={self.__lon[int(len(self.__lon)/2)]:.6f}, "
+            f"lat={self.__lat[int(len(self.__lat)/2)]:.6f})"
+        )
+
         trans_ecef2enu = hray.transform.TransformerEcef2enu(
-            lon_or=self.__lon[int(len(self.__lon) / 2)],
-            lat_or=self.__lat[int(len(self.__lat) / 2)],
-            ellps=ellps)
+            lon_or=lon_inner_center,   # ← Mitte des inneren Domains
+            lat_or=lat_inner_center,   # ← nicht Mitte des äusseren
+            ellps=ellps
+)
         x_enu, y_enu, z_enu = hray.transform.ecef2enu(x_ecef, y_ecef, z_ecef,
                                                     trans_ecef2enu)
 
@@ -358,14 +430,80 @@ class SonnenWinkel:
         t = ts.from_datetime(dt_utc)
         astrometric = loc_or.at(t).observe(sun)
         alt, az, d = astrometric.apparent().altaz()
-        x_s = d.m * np.cos(alt.radians) * np.sin(az.radians)
-        y_s = d.m * np.cos(alt.radians) * np.cos(az.radians)
-        z_s = d.m * np.sin(alt.radians)
-        sun_position = np.array([x_s, y_s, z_s], dtype=np.float32)
-        logging.info(f"{os.getpid()} Sun altitude: {alt.degrees:.2f}°, azimuth: {az.degrees:.2f}°")
+        #x_s = d.m * np.cos(alt.radians) * np.sin(az.radians)
+        #y_s = d.m * np.cos(alt.radians) * np.cos(az.radians)
+        #z_s = d.m * np.sin(alt.radians)
+        #sun_position = np.array([x_s, y_s, z_s], dtype=np.float32)
+        #logging.info(f"{os.getpid()} Sun altitude: {alt.degrees:.2f}°, azimuth: {az.degrees:.2f}°")
+
+        # Fix Sunpos (normalisierter Richtungsvektor, skaliert auf search_dist):
+        sun_dir_x = np.cos(alt.radians) * np.sin(az.radians)
+        sun_dir_y = np.cos(alt.radians) * np.cos(az.radians)
+        sun_dir_z = np.sin(alt.radians)
+
+        # Normalisieren und auf search_dist skalieren (kein float32-Praezisionsproblem)
+        scale = float(self.__search_dist) * 10.0
+        sun_position = np.array(
+            [sun_dir_x * scale, sun_dir_y * scale, sun_dir_z * scale],
+            dtype=np.float32
+        )
+
+        logging.info(
+            f"{os.getpid()} sun_position (normalisiert, scale={scale:.0f}m): "
+            f"x={sun_dir_x*scale:.1f}, y={sun_dir_y*scale:.1f}, z={sun_dir_z*scale:.1f}"
+        )
 
         # buffer shadow
         shadow_buffer = np.zeros(vec_tilt_enu.shape[:2], dtype=np.uint8)
+
+
+        # Direkt nach shadow_buffer berechnen
+        # Prüft die drei bekannten Punkte im shadow_buffer
+
+        from pyproj import Transformer
+        transformer = Transformer.from_crs("EPSG:4326", "EPSG:4326", always_xy=True)
+
+        test_points = [
+            (7.645855, 46.681074, "korrekt maskiert (Schatten)"),
+            (7.646589, 46.681099, "FALSCH nicht maskiert"),
+            (7.647440, 46.681151, "korrekt nicht maskiert (Sonne)"),
+        ]
+
+        lon_in = self.__lon[slice_in[1]]
+        lat_in = self.__lat[slice_in[0]]
+
+        logging.info("=" * 60)
+        logging.info("PIXEL-DIAGNOSE: Bekannte Testpunkte")
+        logging.info(f"Inner domain lon: {lon_in[0]:.6f} bis {lon_in[-1]:.6f}")
+        logging.info(f"Inner domain lat: {lat_in[-1]:.6f} bis {lat_in[0]:.6f}")
+        logging.info(f"Pixel-Abstand lon: {(lon_in[1]-lon_in[0])*111320*0.6861:.2f}m")
+        logging.info(f"Pixel-Abstand lat: {abs(lat_in[1]-lat_in[0])*111320:.2f}m")
+
+        for lon_p, lat_p, label in test_points:
+            col = int(np.searchsorted(lon_in, lon_p))
+            row = int(np.searchsorted(-lat_in, -lat_p))
+
+            col = max(0, min(col, shadow_buffer.shape[1] - 1))
+            row = max(0, min(row, shadow_buffer.shape[0] - 1))
+
+            val = shadow_buffer[row, col]
+            status = "SCHATTEN" if val == 0 else "BELEUCHTET"
+
+            # Tatsaechliche Koordinate des gefundenen Pixels
+            actual_lon = lon_in[col]
+            actual_lat = lat_in[row]
+            dist_m = abs(actual_lon - lon_p) * 111320.0 * 0.6861
+
+            logging.info(
+                f"  {label}: shadow_buffer={val} ({status}) | "
+                f"col={col}, row={row} | "
+                f"Pixel-lon={actual_lon:.6f} (Abstand={dist_m:.1f}m)"
+            )
+        logging.info("=" * 60)
+
+
+
+
         terrain.shadow(sun_position, shadow_buffer)
         logging.info(f"{os.getpid()} Shadow computation time: %.2f s" % (time.time() - t_beg))
 
