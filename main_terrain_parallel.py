@@ -5,7 +5,7 @@ Parallel terrain processing pipeline for Switzerland DSM data.
 
 Computes per-pixel solar incidence angle and shadow mask for one or more
 Sentinel-2 orbit perimeters (or full Switzerland) and writes a single combined
-GeoTIFF per run.
+GeoTIFF per run. Developed initially by @stflury and DikshaAcharya as inhttps://github.com/swisstopo/topo-landschaftsgradient/tree/parallelism based on https://github.com/ChristianSteger/HORAYZON
 
 Combined output encoding (uint8, EPSG:2056, 10 m resolution):
   0 - 180 : solar incidence angle in degrees (illuminated pixels)
@@ -511,25 +511,52 @@ def combine_incidence_and_shadow(inc_mosaic, ilu_mosaic, inc_nodata, ilu_nodata)
     return combined
 
 
-def write_terrain_tif(combined, transform, output_tif):
+def write_terrain_tif(combined, transform, output_tif, dsm_path):
     """
-    Write the combined terrain raster to a GeoTIFF using a two-step approach:
-      1. Write intermediate uint8 GeoTIFF with rasterio (in a temp directory)
-      2. Run gdalwarp to produce the final file with DEFLATE compression,
-         BIGTIFF support, tiled layout and 10 m pixel alignment (-tap)
+    Write the combined terrain raster to a GeoTIFF.
 
-    The intermediate temp file is deleted after gdalwarp succeeds.
+    Before export, pixels where the source DSM has nodata (-9999) are set to
+    255 (nodata) in the combined raster. This ensures that areas outside the
+    DSM extent are not falsely encoded as shadow (200) or incidence (0-180).
+
+    Steps:
+      1. Read DSM nodata mask for the combined raster extent
+      2. Apply nodata mask to combined array
+      3. Write intermediate uint8 GeoTIFF with rasterio (temp file)
+      4. Run gdalwarp for DEFLATE compression, tiling and 10 m pixel alignment
 
     Args:
         combined   : uint8 numpy array [H, W]
         transform  : rasterio Affine transform (EPSG:2056)
         output_tif : Full path to the output GeoTIFF
-
-    Raises:
-        subprocess.CalledProcessError if gdalwarp fails
+        dsm_path   : Full path to the source DSM (used for nodata masking)
     """
-    # Step 1: write intermediate file
-    tmp_dir = os.path.dirname(output_tif)
+    # --- Step 1: Apply DSM nodata mask ---
+    # Read the DSM window that corresponds to the combined raster extent.
+    # Where DSM == -9999 (nodata), force combined to 255 (nodata).
+    h, w = combined.shape
+    x_min = transform.c
+    y_max = transform.f
+    x_max = x_min + w * transform.a
+    y_min = y_max + h * transform.e   # transform.e is negative
+
+    with rasterio.open(dsm_path) as dsm_src:
+        from rasterio.windows import from_bounds as wfb
+        dsm_nodata = dsm_src.nodata if dsm_src.nodata is not None else -9999.0
+        window = wfb(x_min, y_min, x_max, y_max, dsm_src.transform)
+        window = window.round_offsets().round_lengths()
+
+        dsm_tile = dsm_src.read(1, window=window, out_shape=(h, w),
+                                resampling=rasterio.enums.Resampling.nearest)
+
+    nodata_mask = (dsm_tile == dsm_nodata)
+    n_masked = int(nodata_mask.sum())
+    logging.info(f"DSM nodata mask applied: {n_masked} pixels set to 255")
+    combined = combined.copy()
+    combined[nodata_mask] = 255
+
+    # --- Step 2: Write intermediate temp file ---
+    tmp_dir = os.path.dirname(output_tif) or "."
     tmp_fd, tmp_path = tempfile.mkstemp(suffix="_tmp.tif", dir=tmp_dir)
     os.close(tmp_fd)
 
@@ -544,27 +571,24 @@ def write_terrain_tif(combined, transform, output_tif):
     ) as dst:
         dst.write(combined, 1)
         dst.set_band_description(1, "terrain_incidence_shadow")
-        dst.update_tags(
-            1,
-            ENCODING="0-180=incidence_deg, 200=shadow, 255=nodata",
-        )
+        dst.update_tags(1, ENCODING="0-180=incidence_deg, 200=shadow, 255=nodata")
 
-    # Step 2: gdalwarp for compression and pixel alignment
+    # --- Step 3: gdalwarp for compression and pixel alignment ---
     if os.path.isfile(output_tif):
         os.remove(output_tif)
 
     cmd = [
         "gdalwarp",
-        "-of",     "GTiff",
-        "-co",     "BIGTIFF=YES",
-        "-co",     "NUM_THREADS=ALL_CPUS",
-        "--config","GDAL_NUM_THREADS", "ALL_CPUS",
-        "-co",     "COMPRESS=DEFLATE",
-        "-co",     "TILED=YES",
-        "-tr",     "10", "10",
+        "-of",      "GTiff",
+        "-co",      "BIGTIFF=YES",
+        "-co",      "NUM_THREADS=ALL_CPUS",
+        "--config", "GDAL_NUM_THREADS", "ALL_CPUS",
+        "-co",      "COMPRESS=DEFLATE",
+        "-co",      "TILED=YES",
+        "-tr",      "10", "10",
         "-tap",
-        "-r",      "near",    # nearest-neighbour: preserve categorical values
-        "-ot",     "Byte",
+        "-r",       "near",
+        "-ot",      "Byte",
         "-overwrite",
         tmp_path,
         output_tif,
@@ -710,7 +734,7 @@ def main_terrain_parallel(orbit, timedate, outputfilename=None):
 
         # --- Write final GeoTIFF ---
         logging.info(f"Writing output: {outputfilename}")
-        write_terrain_tif(combined, inc_transform, outputfilename)
+        write_terrain_tif(combined, inc_transform, outputfilename, CFG["dsm_path"])
 
         # --- Verify output ---
         if not os.path.isfile(outputfilename):
