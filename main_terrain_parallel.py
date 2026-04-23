@@ -50,7 +50,13 @@ from main_terrain_module import HelperFunctions, InzidenWinkel, SonnenWinkel
 # as defaults unless overridden by function arguments.
 # ===========================================================================
 
+
+
 CFG = {
+    # --- Logging ---
+    # Set to False to suppress INFO messages (WARNING and above are always shown)
+    "log_info": False,
+
     # --- Input DSM ---
     # Full-Switzerland DSM in LV95 (EPSG:2056), 10 m resolution, Float32
     "dsm_path": r"D:\temp\github\topo-satromo-v2\local_assets\DSM_full_CH_nodata.tif",
@@ -126,12 +132,18 @@ def setup_logging(level=logging.INFO, fmt="%(asctime)s [%(levelname)s] %(message
                   logfolder=None):
     """
     Configure root logger with console handler and optional file handler.
+    If CFG['log_info'] is False, the effective level is raised to WARNING,
+    suppressing all INFO messages on console and in the log file.
 
     Args:
         level     : Logging level (e.g. logging.INFO)
         fmt       : Log message format string
         logfolder : Path object; if given, a timestamped .log file is created there
     """
+    # Override level if INFO logging is disabled in config
+    if not CFG.get("log_info", True) and level == logging.INFO:
+        level = logging.WARNING
+
     handlers = [logging.StreamHandler()]
     if logfolder:
         Path(logfolder).mkdir(parents=True, exist_ok=True)

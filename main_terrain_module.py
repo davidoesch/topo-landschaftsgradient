@@ -342,7 +342,7 @@ class DOM_sw:
         domain["lat_max"] = min(89.9,  domain["lat_max"])
         domain["lon_min"] = max(-179.9, domain["lon_min"])
         domain["lon_max"] = min(179.9,  domain["lon_max"])
-        logging.warning(f"DOMAIN (inner): {domain}")
+        logging.info(f"DOMAIN (inner): {domain}")
 
         # Latitude-corrected degree sizes for N-S and E-W (Bug fix: was identical before)
         lat_center      = (domain["lat_min"] + domain["lat_max"]) / 2.0
@@ -376,7 +376,7 @@ class DOM_sw:
                 "lat_min": domain["lat_min"] - buffer_lat_deg,
                 "lat_max": domain["lat_max"] + buffer_lat_deg,
             }
-        logging.warning(f"DOMAIN OUTER: {domain_outer}")
+        logging.info(f"DOMAIN OUTER: {domain_outer}")
 
         # Reproject DSM from LV95 to WGS84 at outer domain extent (in memory)
         ds_src    = gdal.Open(self.__dom)
